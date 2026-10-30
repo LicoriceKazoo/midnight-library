@@ -76,6 +76,12 @@ export function sanitizePastedHtml(html: string) {
     const target = document.createElement(targetTag)
     target.append(children)
 
+    if (targetTag === 'p') {
+      const indent = node.getAttribute('data-indent')
+      if (indent && /^[1-4]$/u.test(indent)) target.setAttribute('data-indent', indent)
+      if (node.getAttribute('data-first-line-indent') === 'true') target.setAttribute('data-first-line-indent', 'true')
+    }
+
     const explicitColor = node.getAttribute('color') || (node as HTMLElement).style?.color
     const safeColor = explicitColor ? readablePastedColor(explicitColor) : null
     if (safeColor) {

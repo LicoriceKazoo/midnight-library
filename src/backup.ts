@@ -1,5 +1,5 @@
 import { currentSchemaVersion, migrateState, preferenceLimits, readingThemes } from './model'
-import type { AppState, Chapter, Note, ReadingPreferences, Story } from './types'
+import type { AppState, Chapter, Note, ReadingPreferences, Story, StoryPublication } from './types'
 
 export const backupFormat = 'midnight-library-backup'
 export const backupVersion = 1
@@ -19,6 +19,7 @@ const allowedRichTextTags = new Set([
   'p', 'br', 'strong', 'b', 'em', 'i', 'span', 'h1', 'h2', 'h3', 'h4',
   'blockquote', 'ul', 'ol', 'li', 'pre', 'code', 'hr',
 ])
+const publicationIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -98,6 +99,24 @@ function validateNote(value: unknown, storyIndex: number, noteIndex: number): No
   }
 }
 
+function validatePublication(value: unknown, storyIndex: number, chapterIds: Set<string>): StoryPublication | undefined {
+  if (value === undefined) return undefined
+  const label = `Story ${storyIndex + 1} publication`
+  if (!isRecord(value) || !Array.isArray(value.chapterIds)) throw new Error(`${label} is invalid.`)
+  const selectedChapterIds = value.chapterIds.map((id) => requireString(id, `${label} chapter ID`, false))
+  if (new Set(selectedChapterIds).size !== selectedChapterIds.length || selectedChapterIds.some((id) => !chapterIds.has(id))) {
+    throw new Error(`${label} refers to invalid chapters.`)
+  }
+  const id = requireString(value.id, `${label} ID`, false)
+  if (!publicationIdPattern.test(id)) throw new Error(`${label} has an invalid ID.`)
+  return {
+    id,
+    publishedAt: requireTimestamp(value.publishedAt, label),
+    updatedAt: requireTimestamp(value.updatedAt, label),
+    chapterIds: selectedChapterIds,
+  }
+}
+
 function validatePreferences(value: unknown): ReadingPreferences {
   if (!isRecord(value)) throw new Error('Reading preferences are missing or invalid.')
   const fontSize = value.fontSize
@@ -139,6 +158,7 @@ function validateStories(value: unknown): Story[] {
       chapterIds.add(validated.id)
       return validated
     })
+    const storyChapterIds = new Set(chapters.map((chapter) => chapter.id))
 
     const rawNotes = item.notes ?? []
     if (!Array.isArray(rawNotes)) throw new Error(`Story ${storyIndex + 1} has invalid notes.`)
@@ -160,6 +180,7 @@ function validateStories(value: unknown): Story[] {
       updatedAt: requireTimestamp(item.updatedAt, `Story ${storyIndex + 1}`),
       chapters,
       notes,
+      publication: validatePublication(item.publication, storyIndex, storyChapterIds),
     }
   })
 }

@@ -7,21 +7,25 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "vitest run src",
+    "test": "vitest run src tests/unit",
     "test:e2e": "playwright test",
     "typecheck": "tsc -b --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.1.7",
     "@tiptap/core": "^3.32.1",
     "@tiptap/extension-color": "^3.32.1",
     "@tiptap/extension-text-style": "^3.32.1",
     "@tiptap/react": "^3.32.1",
     "@tiptap/starter-kit": "^3.32.1",
+    "netlify-identity-widget": "^2.0.3",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "xss": "^1.0.17"
   },
   "devDependencies": {
+    "@netlify/functions": "^6.0.3",
     "@playwright/test": "^1.64.1",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",

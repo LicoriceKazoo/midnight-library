@@ -3,7 +3,8 @@ In development: Cozy story reader and editor.
 
 ## Development
 
-Requires Node.js 22.12+ (or 20.19+).
+Requires Node.js 22.12 or newer. Netlify builds use Node.js 24 as configured in
+`netlify.toml`.
 
 ```sh
 npm install
@@ -33,6 +34,12 @@ intentionally excluded from portable story JSON backups.
 The mobile deployment milestone adds an installable, offline-capable Progressive
 Web App with safe, user-confirmed updates. See [DEPLOYMENT.md](DEPLOYMENT.md) for
 free Netlify and Vercel setup, Galaxy S24 installation, and device data guidance.
+
+Optional public sharing creates an explicit, read-only snapshot containing only
+the chapters selected by the owner. It uses authenticated Netlify Functions and
+site-wide Netlify Blobs while keeping local writing, notes, and audio in IndexedDB.
+See [docs/public-story-sharing-netlify.md](docs/public-story-sharing-netlify.md)
+for the security model, Free-plan implications, and manual Identity setup.
 
 ```sh
 npm run build  # Type-check and build for production
