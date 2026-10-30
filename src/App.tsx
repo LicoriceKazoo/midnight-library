@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { BackupControls, RestoreBackupDialog } from './BackupControls'
 import { Icon } from './Icon'
 import { QuickNotesDrawer } from './QuickNotesDrawer'
 import { chapterToHtml, countWords, currentSchemaVersion, migrateState, normalizePreferences, preferenceLimits } from './model'
 import { defaultPreferences, sampleStories } from './sampleData'
 import { loadState, saveState } from './storage'
-import type { Chapter, Note, ReadingPreferences, SaveStatus, Story, View } from './types'
+import type { AppState, Chapter, Note, ReadingPreferences, SaveStatus, Story, View } from './types'
 import './App.css'
 
 const RichTextEditor = lazy(() =>
@@ -13,7 +14,7 @@ const RichTextEditor = lazy(() =>
 
 type DialogState =
   | { type: 'create-story' }
-  | { type: 'rename-story'; storyId: string; initialValue: string }
+  | { type: 'edit-story'; storyId: string; initialTitle: string; initialDescription: string }
   | { type: 'delete-story'; storyId: string; title: string }
   | { type: 'create-chapter'; storyId: string }
   | { type: 'rename-chapter'; storyId: string; chapterId: string; initialValue: string }
@@ -37,6 +38,8 @@ function App() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
   const [dialog, setDialog] = useState<DialogState>(null)
+  const [pendingBackup, setPendingBackup] = useState<{ state: AppState; exportedAt: string } | null>(null)
+  const [backupNotice, setBackupNotice] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [storageError, setStorageError] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
@@ -78,20 +81,21 @@ function App() {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      if (dialog) setDialog(null)
+      if (pendingBackup) setPendingBackup(null)
+      else if (dialog) setDialog(null)
       else if (notesOpen) closeNotes()
       else setDrawerOpen(false)
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [dialog, notesOpen])
+  }, [dialog, notesOpen, pendingBackup])
 
   useEffect(() => {
-    document.body.style.overflow = drawerOpen || dialog || notesOpen ? 'hidden' : ''
+    document.body.style.overflow = drawerOpen || dialog || notesOpen || pendingBackup ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
     }
-  }, [dialog, drawerOpen, notesOpen])
+  }, [dialog, drawerOpen, notesOpen, pendingBackup])
 
   const activeStory = useMemo(
     () => ('storyId' in view ? stories.find((story) => story.id === view.storyId) : undefined),
@@ -167,7 +171,22 @@ function App() {
     }))
   }
 
-  const handleDialogSubmit = (value?: string) => {
+  const restoreBackup = () => {
+    if (!pendingBackup) return
+    setSaveStatus('saving')
+    setStories(pendingBackup.state.stories)
+    setPreferences(pendingBackup.state.preferences)
+    setPendingBackup(null)
+    setDrawerOpen(false)
+    setNotesOpen(false)
+    setDialog(null)
+    setView({ name: 'library' })
+    setBackupNotice('Backup restored. Your complete library is saved locally.')
+    window.setTimeout(() => setBackupNotice(null), 5000)
+    window.scrollTo({ top: 0 })
+  }
+
+  const handleDialogSubmit = (value?: string, description?: string) => {
     if (!dialog) return
     const title = value?.trim()
     const now = Date.now()
@@ -189,8 +208,13 @@ function App() {
       return
     }
 
-    if (dialog.type === 'rename-story' && title) {
-      updateStory(dialog.storyId, (story) => ({ ...story, title, updatedAt: now }))
+    if (dialog.type === 'edit-story' && title) {
+      updateStory(dialog.storyId, (story) => ({
+        ...story,
+        title,
+        description: description ?? '',
+        updatedAt: now,
+      }))
     }
 
     if (dialog.type === 'delete-story') {
@@ -278,8 +302,11 @@ function App() {
             setDialog({ type: 'delete-story', storyId: story.id, title: story.title })
           }
           onOpen={(storyId) => navigate({ name: 'story', storyId })}
-          onRename={(story) =>
-            setDialog({ type: 'rename-story', storyId: story.id, initialValue: story.title })
+          onEdit={(story) =>
+            setDialog({
+              type: 'edit-story', storyId: story.id, initialTitle: story.title,
+              initialDescription: story.description,
+            })
           }
         />
       )}
@@ -287,6 +314,10 @@ function App() {
       {view.name === 'story' && activeStory && (
         <StoryScreen
           story={activeStory}
+          onEditDetails={() => setDialog({
+            type: 'edit-story', storyId: activeStory.id, initialTitle: activeStory.title,
+            initialDescription: activeStory.description,
+          })}
           onCreate={() => setDialog({ type: 'create-chapter', storyId: activeStory.id })}
           onDelete={(chapter) =>
             setDialog({
@@ -326,10 +357,25 @@ function App() {
           setSaveStatus('saving')
           setPreferences(nextPreferences)
         }}
+        onImportReady={(state, exportedAt) => {
+          setDrawerOpen(false)
+          setPendingBackup({ state, exportedAt })
+        }}
+        state={{ schemaVersion: currentSchemaVersion, stories, preferences }}
       />
 
       {dialog && (
         <ActionDialog dialog={dialog} onCancel={() => setDialog(null)} onSubmit={handleDialogSubmit} />
+      )}
+
+      {pendingBackup && (
+        <RestoreBackupDialog
+          currentStoryCount={stories.length}
+          exportedAt={pendingBackup.exportedAt}
+          importedState={pendingBackup.state}
+          onCancel={() => setPendingBackup(null)}
+          onRestore={restoreBackup}
+        />
       )}
 
       {activeStory && (
@@ -344,6 +390,7 @@ function App() {
           onUpdate={(noteId, text) => updateNote(activeStory.id, noteId, text)}
         />
       )}
+      {backupNotice && <div className="success-toast" role="status">{backupNotice}</div>}
     </div>
   )
 }
@@ -378,13 +425,13 @@ function AppHeader({
 }
 
 function LibraryScreen({
-  stories, onCreate, onDelete, onOpen, onRename,
+  stories, onCreate, onDelete, onEdit, onOpen,
 }: {
   stories: Story[]
   onCreate: () => void
   onDelete: (story: Story) => void
+  onEdit: (story: Story) => void
   onOpen: (storyId: string) => void
-  onRename: (story: Story) => void
 }) {
   return (
     <main className="screen library-screen">
@@ -427,7 +474,7 @@ function LibraryScreen({
                 </span>
               </button>
               <div className="card-actions" aria-label={`Actions for ${story.title}`}>
-                <button onClick={() => onRename(story)} type="button"><Icon name="edit" size={16} /> Rename</button>
+                <button onClick={() => onEdit(story)} type="button"><Icon name="edit" size={16} /> Details</button>
                 <button className="danger-action" onClick={() => onDelete(story)} type="button"><Icon name="trash" size={16} /> Delete</button>
               </div>
             </article>
@@ -439,21 +486,25 @@ function LibraryScreen({
 }
 
 function StoryScreen({
-  story, onCreate, onDelete, onOpen, onRename,
+  story, onCreate, onDelete, onEditDetails, onOpen, onRename,
 }: {
   story: Story
   onCreate: () => void
   onDelete: (chapter: Chapter) => void
+  onEditDetails: () => void
   onOpen: (chapterId: string) => void
   onRename: (chapter: Chapter) => void
 }) {
   return (
     <main className="screen story-screen">
       <section className="story-hero">
-        {story.isSample && <span className="sample-badge">Sample story</span>}
+        <div className="story-hero-actions">
+          {story.isSample && <span className="sample-badge">Sample story</span>}
+          <button onClick={onEditDetails} type="button"><Icon name="edit" size={15} /> Edit details</button>
+        </div>
         <p className="eyebrow">Story</p>
         <h1>{story.title}</h1>
-        <p>{story.description}</p>
+        {story.description && <p className="story-full-description">{story.description}</p>}
       </section>
 
       <div className="chapter-heading">
@@ -587,13 +638,15 @@ function paginateHtml(html: string) {
 }
 
 function NavigationDrawer({
-  activeStory, open, preferences, view, onClose, onNavigate, onPreferences,
+  activeStory, open, preferences, state, view, onClose, onImportReady, onNavigate, onPreferences,
 }: {
   activeStory?: Story
   open: boolean
   preferences: ReadingPreferences
+  state: AppState
   view: View
   onClose: () => void
+  onImportReady: (state: AppState, exportedAt: string) => void
   onNavigate: (view: View) => void
   onPreferences: (preferences: ReadingPreferences) => void
 }) {
@@ -634,6 +687,7 @@ function NavigationDrawer({
           </div>
           <p className="control-preview" style={{ fontSize: `${Math.min(preferences.fontSize, 20)}px`, lineHeight: preferences.lineHeight }}>The night was quiet, and every page felt like a small illuminated window.</p>
         </section>
+        <BackupControls onImportReady={onImportReady} state={state} />
         <p className="drawer-footer">Saved privately on this device</p>
       </aside>
     </>
@@ -645,23 +699,33 @@ function ActionDialog({
 }: {
   dialog: Exclude<DialogState, null>
   onCancel: () => void
-  onSubmit: (value?: string) => void
+  onSubmit: (value?: string, description?: string) => void
 }) {
   const isDelete = dialog.type.startsWith('delete')
+  const isEditStory = dialog.type === 'edit-story'
   const isStory = dialog.type.endsWith('story')
-  const initialValue = 'initialValue' in dialog ? dialog.initialValue : ''
+  const initialValue = 'initialValue' in dialog
+    ? dialog.initialValue
+    : isEditStory ? dialog.initialTitle : ''
   const [value, setValue] = useState(initialValue)
-  const action = dialog.type.startsWith('create') ? 'Create' : dialog.type.startsWith('rename') ? 'Rename' : 'Delete'
+  const [description, setDescription] = useState(isEditStory ? dialog.initialDescription : '')
+  const action = dialog.type.startsWith('create') ? 'Create' : isEditStory ? 'Save' : dialog.type.startsWith('rename') ? 'Rename' : 'Delete'
+  const heading = isEditStory ? 'Edit story details' : `${action} ${isStory ? 'story' : 'chapter'}`
 
   return (
     <div aria-labelledby="action-dialog-title" aria-modal="true" className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onCancel()} role="dialog">
-      <form className="action-dialog" onSubmit={(event) => { event.preventDefault(); onSubmit(value) }}>
+      <form className="action-dialog" onSubmit={(event) => { event.preventDefault(); onSubmit(value, description) }}>
         <span className={`dialog-icon ${isDelete ? 'delete' : ''}`}><Icon name={isDelete ? 'trash' : isStory ? 'book' : 'edit'} /></span>
-        <h2 id="action-dialog-title">{action} {isStory ? 'story' : 'chapter'}</h2>
+        <h2 id="action-dialog-title">{heading}</h2>
         {isDelete ? (
           <p>“{'title' in dialog ? dialog.title : ''}” will be permanently removed from this device.</p>
         ) : (
-          <label>{isStory ? 'Story' : 'Chapter'} title<input autoFocus maxLength={80} onChange={(event) => setValue(event.target.value)} placeholder={isStory ? 'The name of your story' : 'Chapter title'} required value={value} /></label>
+          <div className="dialog-fields">
+            <label>{isStory ? 'Story' : 'Chapter'} title<input autoFocus maxLength={80} onChange={(event) => setValue(event.target.value)} placeholder={isStory ? 'The name of your story' : 'Chapter title'} required value={value} /></label>
+            {isEditStory && (
+              <label>Description <span>Optional</span><textarea maxLength={1200} onChange={(event) => setDescription(event.target.value)} placeholder="Add a short description…" rows={5} value={description} /></label>
+            )}
+          </div>
         )}
         <div className="dialog-actions">
           <button className="secondary-button" onClick={onCancel} type="button">Cancel</button>

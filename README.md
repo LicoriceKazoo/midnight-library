@@ -22,6 +22,10 @@ text colors, automatic save status, story-level quick notes, and expanded readin
 comfort controls. Older paragraph-based chapters are migrated automatically when
 they are opened.
 
+Story titles and multiline descriptions can be edited from the library or story
+view. The navigation drawer also supports versioned JSON exports and validated,
+replacement-only restores of the complete library and reading preferences.
+
 ```sh
 npm run build  # Type-check and build for production
 npm run lint   # Run Oxlint

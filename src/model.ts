@@ -60,6 +60,7 @@ export function migrateState(
   const sourceStories = Array.isArray(state?.stories) ? state.stories : fallbackStories
   const stories = sourceStories.map((story) => ({
     ...story,
+    description: typeof story.description === 'string' ? story.description : '',
     notes: Array.isArray(story.notes) ? story.notes : [],
     chapters: Array.isArray(story.chapters)
       ? story.chapters.map((chapter) => ({
