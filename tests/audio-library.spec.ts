@@ -24,8 +24,22 @@ function createPlayableWav(frequency: number) {
 }
 
 async function openAudioLibrary(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: 'Open navigation menu' }).click()
+  const menu = page.getByRole('button', { name: 'Open navigation menu' })
+  if (await menu.isVisible()) await menu.click()
+  else await page.getByRole('button', { name: 'Open reading settings' }).click()
   await page.getByRole('button', { name: 'Audio Library' }).click()
+}
+
+async function swipePlayer(page: import('@playwright/test').Page, distance: number) {
+  const handle = page.locator('.player-swipe-handle')
+  const box = await handle.boundingBox()
+  if (!box) throw new Error('Audio player handle is not visible.')
+  const client = await page.context().newCDPSession(page)
+  const x = box.x + box.width / 2
+  const startY = box.y + box.height / 2
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: startY }] })
+  await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: startY + distance }] })
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 }
 
 test('stores tracks and playlists and preserves the player across app navigation', async ({ page }) => {
@@ -84,7 +98,35 @@ test('stores tracks and playlists and preserves the player across app navigation
   await expect(player).toContainText('Rain at Midnight')
   await expect.poll(() => page.locator('audio').evaluate((element: HTMLAudioElement) => element.paused)).toBe(false)
   await expect.poll(() => page.locator('audio').evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(pausedAt + 0.05)
-  await player.getByRole('button', { name: 'Expand audio player' }).click()
+
+  await page.evaluate(() => {
+    const badge = document.createElement('div')
+    badge.id = 'provider-badge-test'
+    Object.assign(badge.style, { position: 'fixed', zIndex: '999', right: '0', bottom: '0', left: '0', height: '72px' })
+    document.body.append(badge)
+  })
+  await swipePlayer(page, -70)
+  await expect(player).toHaveClass(/expanded/)
+  await expect(player.getByLabel('Track position')).toBeVisible()
+  await expect(player.getByLabel('Volume')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const controlsBottom = document.querySelector('.player-options')?.getBoundingClientRect().bottom ?? Infinity
+    const badgeTop = document.querySelector('#provider-badge-test')?.getBoundingClientRect().top ?? 0
+    return badgeTop - controlsBottom
+  })).toBeGreaterThanOrEqual(0)
+  await swipePlayer(page, 70)
+  await expect(player).not.toHaveClass(/expanded/)
+  await player.locator('.player-swipe-handle').click()
+  await expect(player).toHaveClass(/expanded/)
+  await page.goBack()
+  await expect(player).not.toHaveClass(/expanded/)
+  await player.locator('.player-swipe-handle').click()
+  await expect(player).toHaveClass(/expanded/)
+  await player.getByRole('button', { name: 'Collapse audio player', exact: true }).click()
+  await expect(player).not.toHaveClass(/expanded/)
+  await page.evaluate(() => document.querySelector('#provider-badge-test')?.remove())
+  await player.locator('.player-swipe-handle').click()
+  await expect(player).toHaveClass(/expanded/)
   await player.getByRole('button', { name: 'Next track' }).click()
   await expect(player).toContainText('harbor two')
   await expect.poll(() => page.locator('audio').evaluate((element: HTMLAudioElement) => element.paused)).toBe(false)
@@ -101,7 +143,7 @@ test('stores tracks and playlists and preserves the player across app navigation
   await player.getByRole('button', { name: 'Shuffle' }).click()
   await player.getByLabel('Volume').fill('0.55')
   await player.getByRole('button', { name: 'Mute' }).click()
-  await player.getByRole('button', { name: 'Collapse audio player' }).click()
+  await player.getByRole('button', { name: 'Collapse audio player', exact: true }).click()
 
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.getByRole('button', { name: /The Lantern Keeper/ }).click()
@@ -122,12 +164,12 @@ test('stores tracks and playlists and preserves the player across app navigation
   await expect(page.locator('.playlist-card')).toContainText('Storm Reading')
   await expect(page.locator('.playlist-card')).toContainText('2 tracks')
   await expect(player).toContainText('Rain at Midnight')
-  await player.getByRole('button', { name: 'Expand audio player' }).click()
+  await player.getByRole('button', { name: 'Expand audio player', exact: true }).click()
   await expect(player.getByRole('button', { name: 'Repeat: playlist' })).toBeVisible()
   await expect(player.getByRole('button', { name: 'Shuffle' })).toHaveClass(/active/)
   await expect(player.getByLabel('Volume')).toHaveValue('0.55')
   await expect(player.getByRole('button', { name: 'Unmute' })).toBeVisible()
-  await player.getByRole('button', { name: 'Collapse audio player' }).click()
+  await player.getByRole('button', { name: 'Collapse audio player', exact: true }).click()
 
   await page.getByRole('button', { name: 'Tracks' }).click()
   await page.locator('.playlist-track-picker input').nth(1).uncheck()

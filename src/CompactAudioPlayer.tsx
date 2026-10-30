@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef } from 'react'
 import { useAudio } from './AudioContext'
 import { Icon } from './Icon'
 
@@ -7,15 +7,58 @@ function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
 }
 
-export function CompactAudioPlayer() {
+export function CompactAudioPlayer({ expanded, onExpandedChange }: { expanded: boolean; onExpandedChange: (expanded: boolean) => void }) {
   const audio = useAudio()
-  const [expanded, setExpanded] = useState(false)
+  const gestureStart = useRef<number | null>(null)
+  const suppressTap = useRef(false)
   if (!audio.tracks.length) return null
+
+  const startGesture = (event: React.PointerEvent<HTMLButtonElement>) => {
+    gestureStart.current = event.clientY
+    suppressTap.current = false
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const finishGesture = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (gestureStart.current !== null) {
+      const distance = event.clientY - gestureStart.current
+      if (distance < -36) {
+        onExpandedChange(true)
+        suppressTap.current = true
+      } else if (distance > 36) {
+        onExpandedChange(false)
+        suppressTap.current = true
+      }
+    }
+    gestureStart.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  const toggleExpanded = () => {
+    if (suppressTap.current) {
+      suppressTap.current = false
+      return
+    }
+    onExpandedChange(!expanded)
+  }
 
   return (
     <section aria-label="Audio player" className={`compact-audio-player ${expanded ? 'expanded' : ''}`}>
-      {expanded && (
-        <div className="expanded-player-controls">
+      <button
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Swipe down or tap to collapse audio player' : 'Swipe up or tap to expand audio player'}
+        className="player-swipe-handle"
+        onClick={toggleExpanded}
+        onPointerCancel={() => { gestureStart.current = null }}
+        onPointerDown={startGesture}
+        onPointerUp={finishGesture}
+        type="button"
+      >
+        <span />
+      </button>
+      <div aria-hidden={!expanded} className="expanded-player-controls" inert={!expanded}>
           <div className="player-progress-row">
             <span>{formatTime(audio.progress)}</span>
             <input aria-label="Track position" disabled={!audio.duration} max={audio.duration || 1} min="0" onChange={(event) => audio.seek(Number(event.target.value))} step="0.1" type="range" value={Math.min(audio.progress, audio.duration || 1)} />
@@ -32,8 +75,7 @@ export function CompactAudioPlayer() {
             <button aria-label={audio.playback.muted ? 'Unmute' : 'Mute'} onClick={audio.toggleMute} type="button"><Icon name={audio.playback.muted ? 'volume-x' : 'volume'} size={18} /></button>
             <input aria-label="Volume" max="1" min="0" onChange={(event) => audio.setVolume(Number(event.target.value))} step="0.05" type="range" value={audio.playback.volume} />
           </div>
-        </div>
-      )}
+      </div>
       <div className="compact-player-row">
         <button aria-label={audio.playing ? 'Pause' : 'Play'} className="compact-play-button" disabled={audio.loading} onClick={audio.togglePlay} type="button">
           {audio.loading ? <span className="player-loader" /> : audio.playing ? <Icon name="pause" /> : <Icon name="play" />}
@@ -43,7 +85,7 @@ export function CompactAudioPlayer() {
           <strong>{audio.currentTrack?.title || audio.currentTrack?.fileName || 'Choose a track'}</strong>
         </div>
         <div className="compact-time">{formatTime(audio.progress)}</div>
-        <button aria-label={expanded ? 'Collapse audio player' : 'Expand audio player'} className="player-expand-button" onClick={() => setExpanded((current) => !current)} type="button"><Icon name={expanded ? 'chevron-down' : 'chevron-up'} /></button>
+        <button aria-expanded={expanded} aria-label={expanded ? 'Collapse audio player' : 'Expand audio player'} className="player-expand-button" onClick={() => onExpandedChange(!expanded)} type="button"><Icon name={expanded ? 'chevron-down' : 'chevron-up'} /></button>
       </div>
     </section>
   )

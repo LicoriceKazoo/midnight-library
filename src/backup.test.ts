@@ -6,7 +6,7 @@ import type { AppState } from './types'
 
 const state: AppState = {
   schemaVersion: 2,
-  preferences: { fontSize: 22, lineHeight: 2.1 },
+  preferences: { fontSize: 22, lineHeight: 4.85 },
   stories: [
     {
       id: 'story-one',

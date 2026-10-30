@@ -25,6 +25,52 @@ type DialogState =
   | { type: 'delete-chapter'; storyId: string; chapterId: string; title: string }
   | null
 
+type HistoryOverlay = 'drawer' | 'notes' | 'dialog' | 'backup' | 'player'
+
+type MidnightHistoryState = {
+  midnightLibrary: true
+  view: View
+  overlay?: HistoryOverlay
+  scrollY: number
+}
+
+function isView(value: unknown): value is View {
+  if (!value || typeof value !== 'object' || !('name' in value)) return false
+  const candidate = value as Partial<View>
+  if (candidate.name === 'library' || candidate.name === 'audio') return true
+  if (candidate.name === 'story') return typeof candidate.storyId === 'string'
+  return candidate.name === 'reader' && typeof candidate.storyId === 'string' && typeof candidate.chapterId === 'string'
+}
+
+function isMidnightHistoryState(value: unknown): value is MidnightHistoryState {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<MidnightHistoryState>
+  return candidate.midnightLibrary === true && isView(candidate.view)
+}
+
+function sameView(first: View, second: View) {
+  if (first.name !== second.name) return false
+  if ('storyId' in first && 'storyId' in second && first.storyId !== second.storyId) return false
+  return first.name !== 'reader' || (second.name === 'reader' && first.chapterId === second.chapterId)
+}
+
+function initialView(): View {
+  if (isMidnightHistoryState(window.history.state)) return window.history.state.view
+  const view: View = { name: 'library' }
+  window.history.replaceState({ midnightLibrary: true, view, scrollY: 0 } satisfies MidnightHistoryState, '')
+  return view
+}
+
+function validStoredView(view: View, stories: Story[]): View {
+  if (!('storyId' in view)) return view
+  const story = stories.find((item) => item.id === view.storyId)
+  if (!story) return { name: 'library' }
+  if (view.name === 'reader' && !story.chapters.some((chapter) => chapter.id === view.chapterId)) {
+    return { name: 'story', storyId: story.id }
+  }
+  return view
+}
+
 const cloneSamples = () => structuredClone(sampleStories)
 
 function formatDate(timestamp: number) {
@@ -38,24 +84,30 @@ function formatDate(timestamp: number) {
 function AppContent() {
   const [stories, setStories] = useState<Story[]>([])
   const [preferences, setPreferences] = useState<ReadingPreferences>(defaultPreferences)
-  const [view, setView] = useState<View>({ name: 'library' })
+  const [view, setView] = useState<View>(initialView)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
   const [dialog, setDialog] = useState<DialogState>(null)
   const [pendingBackup, setPendingBackup] = useState<{ state: AppState; exportedAt: string } | null>(null)
+  const [playerExpanded, setPlayerExpanded] = useState(false)
   const [backupNotice, setBackupNotice] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [storageError, setStorageError] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
-  const readingPosition = useRef(0)
   const saveSequence = useRef(0)
 
   useEffect(() => {
     loadState()
       .then((stored) => {
         const state = migrateState(stored, cloneSamples())
+        const historyView = isMidnightHistoryState(window.history.state) ? window.history.state.view : { name: 'library' } as View
+        const restoredView = validStoredView(historyView, state.stories)
         setStories(state.stories)
         setPreferences(state.preferences)
+        setView(restoredView)
+        if (!sameView(historyView, restoredView)) {
+          window.history.replaceState({ midnightLibrary: true, view: restoredView, scrollY: 0 } satisfies MidnightHistoryState, '')
+        }
       })
       .catch(() => {
         const state = migrateState(undefined, cloneSamples())
@@ -83,16 +135,86 @@ function AppContent() {
   }, [hydrated, preferences, stories])
 
   useEffect(() => {
+    window.history.scrollRestoration = 'manual'
+    const restoreHistory = (event: PopStateEvent) => {
+      if (!isMidnightHistoryState(event.state)) return
+      setView(event.state.view)
+      setDrawerOpen(event.state.overlay === 'drawer')
+      setNotesOpen(event.state.overlay === 'notes')
+      setPlayerExpanded(event.state.overlay === 'player')
+      setDialog(null)
+      setPendingBackup(null)
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        window.scrollTo({ top: event.state.scrollY ?? 0 })
+      }))
+    }
+    window.addEventListener('popstate', restoreHistory)
+    return () => window.removeEventListener('popstate', restoreHistory)
+  }, [])
+
+  const activeOverlay: HistoryOverlay | undefined = drawerOpen
+    ? 'drawer'
+    : notesOpen
+      ? 'notes'
+      : dialog
+        ? 'dialog'
+        : pendingBackup
+          ? 'backup'
+          : playerExpanded
+            ? 'player'
+            : undefined
+
+  const rememberCurrentScroll = () => {
+    if (!isMidnightHistoryState(window.history.state)) return
+    window.history.replaceState({ ...window.history.state, scrollY: window.scrollY } satisfies MidnightHistoryState, '')
+  }
+
+  const openOverlay = (overlay: HistoryOverlay) => {
+    rememberCurrentScroll()
+    const nextState: MidnightHistoryState = { midnightLibrary: true, view, overlay, scrollY: window.scrollY }
+    if (activeOverlay) window.history.replaceState(nextState, '')
+    else window.history.pushState(nextState, '')
+    setDrawerOpen(overlay === 'drawer')
+    setNotesOpen(overlay === 'notes')
+    setPlayerExpanded(overlay === 'player')
+    if (overlay !== 'dialog') setDialog(null)
+    if (overlay !== 'backup') setPendingBackup(null)
+  }
+
+  const closeOverlay = (overlay: HistoryOverlay) => {
+    if (isMidnightHistoryState(window.history.state) && window.history.state.overlay === overlay) {
+      window.history.back()
+      return
+    }
+    if (overlay === 'drawer') setDrawerOpen(false)
+    if (overlay === 'notes') setNotesOpen(false)
+    if (overlay === 'dialog') setDialog(null)
+    if (overlay === 'backup') setPendingBackup(null)
+    if (overlay === 'player') setPlayerExpanded(false)
+  }
+
+  const openDialog = (nextDialog: Exclude<DialogState, null>) => {
+    setDialog(nextDialog)
+    openOverlay('dialog')
+  }
+
+  const openBackup = (state: AppState, exportedAt: string) => {
+    setPendingBackup({ state, exportedAt })
+    openOverlay('backup')
+  }
+
+  useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      if (pendingBackup) setPendingBackup(null)
-      else if (dialog) setDialog(null)
+      if (pendingBackup) closeOverlay('backup')
+      else if (dialog) closeOverlay('dialog')
       else if (notesOpen) closeNotes()
-      else setDrawerOpen(false)
+      else if (drawerOpen) closeOverlay('drawer')
+      else if (playerExpanded) closeOverlay('player')
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [dialog, notesOpen, pendingBackup])
+  }, [dialog, drawerOpen, notesOpen, pendingBackup, playerExpanded])
 
   useEffect(() => {
     document.body.style.overflow = drawerOpen || dialog || notesOpen || pendingBackup ? 'hidden' : ''
@@ -114,9 +236,20 @@ function AppContent() {
   )
 
   const navigate = (nextView: View) => {
+    if (sameView(view, nextView)) {
+      if (activeOverlay) closeOverlay(activeOverlay)
+      return
+    }
+    rememberCurrentScroll()
+    const nextState: MidnightHistoryState = { midnightLibrary: true, view: nextView, scrollY: 0 }
+    if (activeOverlay) window.history.replaceState(nextState, '')
+    else window.history.pushState(nextState, '')
     setView(nextView)
     setDrawerOpen(false)
     setNotesOpen(false)
+    setDialog(null)
+    setPendingBackup(null)
+    setPlayerExpanded(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -139,13 +272,12 @@ function AppContent() {
   }
 
   const openNotes = () => {
-    readingPosition.current = window.scrollY
     setNotesOpen(true)
+    openOverlay('notes')
   }
 
   function closeNotes() {
-    setNotesOpen(false)
-    requestAnimationFrame(() => window.scrollTo({ top: readingPosition.current }))
+    closeOverlay('notes')
   }
 
   const addNote = (storyId: string) => {
@@ -180,11 +312,14 @@ function AppContent() {
     setSaveStatus('saving')
     setStories(pendingBackup.state.stories)
     setPreferences(pendingBackup.state.preferences)
+    const libraryView: View = { name: 'library' }
+    window.history.replaceState({ midnightLibrary: true, view: libraryView, scrollY: 0 } satisfies MidnightHistoryState, '')
     setPendingBackup(null)
     setDrawerOpen(false)
     setNotesOpen(false)
     setDialog(null)
-    setView({ name: 'library' })
+    setPlayerExpanded(false)
+    setView(libraryView)
     setBackupNotice('Backup restored. Your complete library is saved locally.')
     window.setTimeout(() => setBackupNotice(null), 5000)
     window.scrollTo({ top: 0 })
@@ -207,7 +342,6 @@ function AppContent() {
         notes: [],
       }
       setStories((current) => [story, ...current])
-      setDialog(null)
       navigate({ name: 'story', storyId: story.id })
       return
     }
@@ -239,7 +373,6 @@ function AppContent() {
         updatedAt: now,
         chapters: [...story.chapters, chapter],
       }))
-      setDialog(null)
       navigate({ name: 'reader', storyId: dialog.storyId, chapterId: chapter.id })
       return
     }
@@ -265,7 +398,7 @@ function AppContent() {
       }
     }
 
-    setDialog(null)
+    closeOverlay('dialog')
   }
 
   if (!hydrated) {
@@ -288,26 +421,20 @@ function AppContent() {
       <AppHeader
         activeStory={activeStory}
         view={view}
-        onBack={() =>
-          navigate(
-            view.name === 'reader' && activeStory
-              ? { name: 'story', storyId: activeStory.id }
-              : { name: 'library' },
-          )
-        }
-        onMenu={() => setDrawerOpen(true)}
+        onBack={() => window.history.back()}
+        onMenu={() => openOverlay('drawer')}
       />
 
       {view.name === 'library' && (
         <LibraryScreen
           stories={stories}
-          onCreate={() => setDialog({ type: 'create-story' })}
+          onCreate={() => openDialog({ type: 'create-story' })}
           onDelete={(story) =>
-            setDialog({ type: 'delete-story', storyId: story.id, title: story.title })
+            openDialog({ type: 'delete-story', storyId: story.id, title: story.title })
           }
           onOpen={(storyId) => navigate({ name: 'story', storyId })}
           onEdit={(story) =>
-            setDialog({
+            openDialog({
               type: 'edit-story', storyId: story.id, initialTitle: story.title,
               initialDescription: story.description,
             })
@@ -318,13 +445,13 @@ function AppContent() {
       {view.name === 'story' && activeStory && (
         <StoryScreen
           story={activeStory}
-          onEditDetails={() => setDialog({
+          onEditDetails={() => openDialog({
             type: 'edit-story', storyId: activeStory.id, initialTitle: activeStory.title,
             initialDescription: activeStory.description,
           })}
-          onCreate={() => setDialog({ type: 'create-chapter', storyId: activeStory.id })}
+          onCreate={() => openDialog({ type: 'create-chapter', storyId: activeStory.id })}
           onDelete={(chapter) =>
-            setDialog({
+            openDialog({
               type: 'delete-chapter', storyId: activeStory.id, chapterId: chapter.id, title: chapter.title,
             })
           }
@@ -332,7 +459,7 @@ function AppContent() {
             navigate({ name: 'reader', storyId: activeStory.id, chapterId })
           }
           onRename={(chapter) =>
-            setDialog({
+            openDialog({
               type: 'rename-chapter', storyId: activeStory.id, chapterId: chapter.id, initialValue: chapter.title,
             })
           }
@@ -357,21 +484,18 @@ function AppContent() {
         open={drawerOpen}
         preferences={preferences}
         view={view}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => closeOverlay('drawer')}
         onNavigate={navigate}
         onPreferences={(nextPreferences) => {
           setSaveStatus('saving')
           setPreferences(nextPreferences)
         }}
-        onImportReady={(state, exportedAt) => {
-          setDrawerOpen(false)
-          setPendingBackup({ state, exportedAt })
-        }}
+        onImportReady={openBackup}
         state={{ schemaVersion: currentSchemaVersion, stories, preferences }}
       />
 
       {dialog && (
-        <ActionDialog dialog={dialog} onCancel={() => setDialog(null)} onSubmit={handleDialogSubmit} />
+        <ActionDialog dialog={dialog} onCancel={() => closeOverlay('dialog')} onSubmit={handleDialogSubmit} />
       )}
 
       {pendingBackup && (
@@ -379,7 +503,7 @@ function AppContent() {
           currentStoryCount={stories.length}
           exportedAt={pendingBackup.exportedAt}
           importedState={pendingBackup.state}
-          onCancel={() => setPendingBackup(null)}
+          onCancel={() => closeOverlay('backup')}
           onRestore={restoreBackup}
         />
       )}
@@ -398,7 +522,10 @@ function AppContent() {
       )}
       {backupNotice && <div className="success-toast" role="status">{backupNotice}</div>}
       <PwaStatus beforeUpdate={() => saveState({ schemaVersion: currentSchemaVersion, stories, preferences })} />
-      <CompactAudioPlayer />
+      <CompactAudioPlayer
+        expanded={playerExpanded}
+        onExpandedChange={(nextExpanded) => nextExpanded ? openOverlay('player') : closeOverlay('player')}
+      />
     </div>
   )
 }
@@ -689,9 +816,9 @@ function NavigationDrawer({
           <div className="line-control">
             <span>Line spacing</span>
             <div>
-              <button aria-label="Decrease line spacing" disabled={preferences.lineHeight <= preferenceLimits.lineHeight.min} onClick={() => setLineHeight(preferences.lineHeight - 0.1)} type="button"><Icon name="minus" size={18} /></button>
+              <button aria-label="Decrease line spacing" disabled={preferences.lineHeight <= preferenceLimits.lineHeight.min} onClick={() => setLineHeight(preferences.lineHeight - preferenceLimits.lineHeight.step)} type="button"><Icon name="minus" size={18} /></button>
               <output>{preferences.lineHeight.toFixed(2)}</output>
-              <button aria-label="Increase line spacing" disabled={preferences.lineHeight >= preferenceLimits.lineHeight.max} onClick={() => setLineHeight(preferences.lineHeight + 0.1)} type="button"><Icon name="plus" size={18} /></button>
+              <button aria-label="Increase line spacing" disabled={preferences.lineHeight >= preferenceLimits.lineHeight.max} onClick={() => setLineHeight(preferences.lineHeight + preferenceLimits.lineHeight.step)} type="button"><Icon name="plus" size={18} /></button>
             </div>
           </div>
           <p className="control-preview" style={{ fontSize: `${Math.min(preferences.fontSize, 20)}px`, lineHeight: preferences.lineHeight }}>The night was quiet, and every page felt like a small illuminated window.</p>

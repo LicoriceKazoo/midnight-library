@@ -45,8 +45,7 @@ test('is installable and preserves offline reading and writing on mobile', async
 
   await context.setOffline(true)
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Stories to return to.' })).toBeVisible()
-  await openSampleChapter(page)
+  await expect(page.locator('.reading-pages')).toContainText('By the time Mara reached Bellweather Harbor')
   await page.getByRole('button', { name: /Edit chapter/ }).click()
   const editor = page.locator('.chapter-editor-content')
   await editor.fill('Written offline beneath a quiet constellation.')
@@ -55,7 +54,6 @@ test('is installable and preserves offline reading and writing on mobile', async
   await expect(page.locator('.reading-pages')).toContainText('Written offline beneath a quiet constellation.')
 
   await page.reload()
-  await openSampleChapter(page)
   await expect(page.locator('.reading-pages')).toContainText('Written offline beneath a quiet constellation.')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
 })

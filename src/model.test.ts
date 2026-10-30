@@ -43,7 +43,8 @@ describe('state migrations', () => {
 describe('reading preferences', () => {
   it('clamps the new typography range and retains two-decimal spacing', () => {
     expect(normalizePreferences({ fontSize: 5, lineHeight: 0.8 })).toEqual({ fontSize: 11, lineHeight: 1.2 })
-    expect(normalizePreferences({ fontSize: 80, lineHeight: 5 })).toEqual({ fontSize: 30, lineHeight: 3 })
+    expect(normalizePreferences({ fontSize: 80, lineHeight: 8 })).toEqual({ fontSize: 30, lineHeight: 5 })
     expect(normalizePreferences({ fontSize: 21, lineHeight: 2.34 })).toEqual({ fontSize: 21, lineHeight: 2.34 })
+    expect(normalizePreferences({ fontSize: 18, lineHeight: 1.85 })).toEqual({ fontSize: 18, lineHeight: 1.85 })
   })
 })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Color } from '@tiptap/extension-color'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { EditorContent, useEditor } from '@tiptap/react'
@@ -28,6 +28,8 @@ export function RichTextEditor({
   onDone: () => void
 }) {
   const [wordCount, setWordCount] = useState(() => countWords(contentHtml))
+  const [keyboardOpen, setKeyboardOpen] = useState(false)
+  const fullViewportHeight = useRef(window.visualViewport?.height ?? window.innerHeight)
   const editor = useEditor({
     extensions: [StarterKit, TextStyle, Color],
     content: contentHtml,
@@ -45,6 +47,46 @@ export function RichTextEditor({
     },
   })
 
+  useEffect(() => {
+    const viewport = window.visualViewport
+    let settleTimer = 0
+
+    const updateKeyboardState = () => {
+      const viewportHeight = viewport?.height ?? window.innerHeight
+      const editorFocused = Boolean(document.activeElement?.closest('.chapter-editor-content'))
+      if (!editorFocused) fullViewportHeight.current = Math.max(fullViewportHeight.current, viewportHeight)
+      const nextOpen = editorFocused && fullViewportHeight.current - viewportHeight > 120
+      setKeyboardOpen(nextOpen)
+
+      if (nextOpen) {
+        window.requestAnimationFrame(() => {
+          const selection = window.getSelection()
+          if (!selection?.rangeCount) return
+          const cursor = selection.getRangeAt(0).getBoundingClientRect()
+          const visibleBottom = viewportHeight - 24
+          if (cursor.bottom > visibleBottom) window.scrollBy({ top: cursor.bottom - visibleBottom + 40 })
+        })
+      }
+    }
+
+    const scheduleUpdate = () => {
+      window.clearTimeout(settleTimer)
+      settleTimer = window.setTimeout(updateKeyboardState, 40)
+    }
+
+    viewport?.addEventListener('resize', scheduleUpdate)
+    window.addEventListener('resize', scheduleUpdate)
+    document.addEventListener('focusin', scheduleUpdate)
+    document.addEventListener('focusout', scheduleUpdate)
+    return () => {
+      window.clearTimeout(settleTimer)
+      viewport?.removeEventListener('resize', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
+      document.removeEventListener('focusin', scheduleUpdate)
+      document.removeEventListener('focusout', scheduleUpdate)
+    }
+  }, [])
+
   if (!editor) return null
 
   const run = (command: () => void) => (event: React.MouseEvent) => {
@@ -54,7 +96,7 @@ export function RichTextEditor({
 
   return (
     <main
-      className="editor-screen"
+      className={`editor-screen ${keyboardOpen ? 'keyboard-open' : ''}`}
       style={{ '--reader-font-size': `${preferences.fontSize}px`, '--reader-line-height': preferences.lineHeight } as React.CSSProperties}
     >
       <header className="editor-heading">

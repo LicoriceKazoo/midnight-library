@@ -2,11 +2,11 @@
 
 The Midnight Library is a static Vite application. It can be hosted on a free Netlify or Vercel account, and both services provide the secure HTTPS address required to install a Progressive Web App.
 
-For milestone testing, deploy the `feature/mobile-pwa-deployment` branch. After this branch is reviewed and merged, change the production branch to `main` so future releases follow the main branch.
+For milestone testing, deploy the `feature/mobile-ux-refinement` branch. After this branch is reviewed and merged, change the production branch to `main` so future releases follow the main branch.
 
 ## Before deployment
 
-1. Sign in to [GitHub](https://github.com/) and confirm the `midnight-library` repository contains the `feature/mobile-pwa-deployment` branch.
+1. Sign in to [GitHub](https://github.com/) and confirm the `midnight-library` repository contains the `feature/mobile-ux-refinement` branch.
 2. You do not need to upload `node_modules` or `dist`. The hosting service creates `dist` for you.
 3. No database, server, environment variables, or paid add-ons are required.
 
@@ -19,7 +19,7 @@ For milestone testing, deploy the `feature/mobile-pwa-deployment` branch. After 
 
    | Setting | Value |
    | --- | --- |
-   | Branch to deploy | `feature/mobile-pwa-deployment` |
+   | Branch to deploy | `feature/mobile-ux-refinement` |
    | Base directory | Leave blank |
    | Build command | `npm run build` |
    | Publish directory | `dist` |
@@ -46,9 +46,17 @@ After merging the milestone, open **Site configuration → Build & deploy → Co
    | Install command | `npm install` |
 
 4. Choose **Deploy**. Vercel creates a free HTTPS `vercel.app` URL.
-5. In **Project Settings → Git**, set the production branch to `feature/mobile-pwa-deployment` while testing this milestone. Change it to `main` after the branch is merged. Other pushed branches receive HTTPS preview URLs automatically.
+5. In **Project Settings → Git**, set the production branch to `feature/mobile-ux-refinement` while testing this milestone. Change it to `main` after the branch is merged. Other pushed branches receive HTTPS preview URLs automatically.
 
 The included `vercel.json` prevents stale service-worker files while leaving the versioned offline cache intact.
+
+## Safely deploy this mobile UX update
+
+If the Netlify site is already connected to GitHub, open **Site configuration → Build & deploy → Continuous deployment** and change **Production branch** to `feature/mobile-ux-refinement`. Netlify automatically builds the new commit with `npm run build` and publishes `dist` at the existing HTTPS address.
+
+On the phone, finish the current edit and wait for **Saved locally** before opening the deployed site while online. When **Update ready** appears, choose **Save & update**. This saves the current story state before activating the new service worker. Do not uninstall the PWA, clear site data, or delete browser storage during deployment; none of those actions are needed for an update.
+
+After the app reopens, test Back from a chapter and story, open the audio player with an upward swipe, and confirm the latest story is still present. Keep a recent JSON export as an additional local backup.
 
 ## Install on a Samsung Galaxy S24
 

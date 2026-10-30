@@ -3,7 +3,7 @@ import type { AppState, Chapter, ReadingPreferences, Story } from './types'
 export const currentSchemaVersion = 2
 export const preferenceLimits = {
   fontSize: { min: 11, max: 30 },
-  lineHeight: { min: 1.2, max: 3 },
+  lineHeight: { min: 1.2, max: 5, step: 0.5 },
 } as const
 
 const clamp = (value: number, min: number, max: number) =>

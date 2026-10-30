@@ -17,6 +17,15 @@ async function openSampleChapter(page: import('@playwright/test').Page) {
   await page.locator('.chapter-open').filter({ hasText: 'The Light Beyond the Breakwater' }).click()
 }
 
+async function returnToLibrary(page: import('@playwright/test').Page) {
+  for (let level = 0; level < 2; level += 1) {
+    const back = page.getByRole('button', { name: 'Go back' })
+    if (!await back.isVisible()) break
+    await back.click()
+  }
+  await expect(page.getByRole('heading', { name: 'Stories to return to.' })).toBeVisible()
+}
+
 test('persists reading preferences, formatted editing, and quick notes on mobile', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(async () => {
@@ -36,14 +45,27 @@ test('persists reading preferences, formatted editing, and quick notes on mobile
   await expect(fontSize).toHaveAttribute('max', '30')
   await fontSize.fill('30')
   await page.getByRole('button', { name: 'Increase line spacing' }).click()
-  await expect(page.locator('.line-control output')).toHaveText('1.85')
+  await expect(page.locator('.line-control output')).toHaveText('2.25')
   await page.getByRole('button', { name: 'Close menu' }).click()
 
   await openSampleChapter(page)
   await page.getByRole('button', { name: /Edit chapter/ }).click()
   const editor = page.locator('.chapter-editor-content')
   await expect(editor).toBeVisible()
+  const colorButton = page.getByRole('button', { name: 'Set text color #e4c57d' })
+  await expect(colorButton).toBeVisible()
+  expect(await colorButton.evaluate((element) => ({
+    touchWidth: element.getBoundingClientRect().width,
+    swatchWidth: getComputedStyle(element, '::before').width,
+  }))).toEqual({ touchWidth: 42, swatchWidth: '26px' })
   await editor.fill('A golden sentence waits beside the midnight window.')
+  await editor.click()
+  await page.setViewportSize({ width: 360, height: 500 })
+  await expect(page.locator('.editor-screen')).toHaveClass(/keyboard-open/)
+  await expect(page.locator('.editor-heading')).toHaveCSS('max-height', '0px')
+  await expect(page.locator('.editor-toolbar')).toBeVisible()
+  await page.setViewportSize({ width: 360, height: 780 })
+  await expect(page.locator('.editor-screen')).not.toHaveClass(/keyboard-open/)
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect(editor).not.toContainText('A golden sentence')
   await page.getByRole('button', { name: 'Redo' }).click()
@@ -51,7 +73,7 @@ test('persists reading preferences, formatted editing, and quick notes on mobile
   await editor.press('Control+A')
   await page.getByRole('button', { name: 'Bold' }).click()
   await page.getByRole('button', { name: 'Heading' }).click()
-  await page.getByRole('button', { name: 'Set text color #e4c57d' }).click()
+  await colorButton.click()
   await expect(page.locator('.editor-status-bar')).toContainText('Saved locally')
   await page.getByRole('button', { name: /Reading mode/ }).click()
   await expect(page.locator('.rich-reading-content h2 strong')).toContainText('A golden sentence')
@@ -66,9 +88,21 @@ test('persists reading preferences, formatted editing, and quick notes on mobile
   await page.reload()
   await page.getByRole('button', { name: 'Open reading settings' }).click()
   await expect(page.getByLabel('Font size')).toHaveValue('30')
-  await expect(page.locator('.line-control output')).toHaveText('1.85')
+  await expect(page.locator('.line-control output')).toHaveText('2.25')
+  for (let step = 0; step < 6; step += 1) {
+    await page.getByRole('button', { name: 'Increase line spacing' }).click()
+  }
+  await expect(page.locator('.line-control output')).toHaveText('5.00')
+  await expect(page.getByRole('button', { name: 'Increase line spacing' })).toBeDisabled()
   await page.getByRole('button', { name: 'Close menu' }).click()
 
+  await page.waitForTimeout(450)
+  await page.reload()
+  await page.getByRole('button', { name: 'Open reading settings' }).click()
+  await expect(page.locator('.line-control output')).toHaveText('5.00')
+  await page.getByRole('button', { name: 'Close menu' }).click()
+
+  await returnToLibrary(page)
   await openSampleChapter(page)
   await expect(page.locator('.rich-reading-content h2 strong')).toContainText('A golden sentence')
   await page.getByRole('button', { name: 'Open quick notes' }).click()
