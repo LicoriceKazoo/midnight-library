@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { connectLambda, getStore } from '@netlify/blobs'
 import type { Handler, HandlerContext, HandlerEvent, HandlerResponse } from '@netlify/functions'
 import { createPublishedStoryFunction } from '../../netlify/lib/published-story-function.js'
 import type { PublishedStory } from '../../src/publishing.js'
@@ -46,6 +47,23 @@ function event(method: string, id = '', body?: unknown, blobs = 'opaque-netlify-
   } satisfies HandlerEvent & { blobs?: string }
 }
 
+function netlifyBlobsContext(includeUncachedEndpoint = true) {
+  return Buffer.from(JSON.stringify({
+    primary_region: 'us-east-1',
+    token: 'request-scoped-test-token',
+    url: 'https://blob-edge.example.net',
+    ...(includeUncachedEndpoint ? { url_uncached: 'https://blob-uncached.example.net' } : {}),
+  })).toString('base64')
+}
+
+function withNetlifyHeaders(request: ReturnType<typeof event>) {
+  Object.assign(request.headers, {
+    'x-nf-deploy-id': 'test-deploy-id',
+    'x-nf-site-id': 'test-site-id',
+  })
+  return request
+}
+
 function context(user?: { sub: string; email?: string }): HandlerContext {
   return { clientContext: user ? { user } : {} } as HandlerContext
 }
@@ -62,10 +80,15 @@ describe('published story Lambda compatibility entry point', () => {
       connect(input) {
         calls.push('connect')
         expect(input.blobs).toBe('opaque-netlify-blobs-context')
+        return { uncachedEdgeURL: 'https://blob-uncached.example.net' }
       },
       openStore(options) {
         calls.push('store')
-        expect(options).toEqual({ name: 'midnight-library-published-stories', consistency: 'strong' })
+        expect(options).toEqual({
+          name: 'midnight-library-published-stories',
+          consistency: 'strong',
+          uncachedEdgeURL: 'https://blob-uncached.example.net',
+        })
         return blobs
       },
       publisherId: owner.sub,
@@ -78,31 +101,44 @@ describe('published story Lambda compatibility entry point', () => {
     expect(JSON.parse(created.body ?? '{}').title).toBe(payload.title)
   })
 
-  it('accepts the opaque Blobs metadata that Netlify injects into a Lambda request', async () => {
-    const blobs = new MemoryBlobsStore()
-    let opened = false
+  it('reproduces the package error when connectLambda discards the uncached endpoint', async () => {
+    const request = withNetlifyHeaders(event('POST', '', payload, netlifyBlobsContext()))
+    const lambdaEvent = { blobs: request.blobs!, headers: request.headers as Record<string, string> }
+    connectLambda(lambdaEvent)
+    const fetchMock = vi.fn()
+    const store = getStore({ name: 'midnight-library-published-stories', consistency: 'strong', fetch: fetchMock })
+
+    await expect(store.setJSON('publication-id', payload, { onlyIfNew: true })).rejects.toMatchObject({
+      name: 'BlobsConsistencyError',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('uses Netlify-provided uncached metadata for an actual strong conditional write', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, {
+      status: 200,
+      headers: { etag: 'created-etag' },
+    }))
     const handler = createPublishedStoryFunction({
-      openStore() { opened = true; return blobs },
+      openStore: (options) => getStore({ ...options, fetch: fetchMock }),
       publisherId: owner.sub,
     })
-    const blobsContext = Buffer.from(JSON.stringify({
-      url: 'https://blob-edge.example.net',
-      token: 'request-scoped-test-token',
-    })).toString('base64')
-    const request = event('POST', '', payload, blobsContext)
-    Object.assign(request.headers, {
-      'x-nf-deploy-id': 'test-deploy-id',
-      'x-nf-site-id': 'test-site-id',
-    })
+    const request = withNetlifyHeaders(event('POST', '', payload, netlifyBlobsContext()))
 
     const response = await call(handler, request, owner)
     expect(response.statusCode).toBe(201)
-    expect(opened).toBe(true)
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/^https:\/\/blob-uncached\.example\.net\//u)
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('if-none-match')).toBe('*')
   })
 
   it('preserves publication, public reading, republishing, and unpublishing behavior', async () => {
     const blobs = new MemoryBlobsStore()
-    const handler = createPublishedStoryFunction({ connect() {}, openStore: () => blobs, publisherId: owner.sub })
+    const handler = createPublishedStoryFunction({
+      connect: () => ({ uncachedEdgeURL: 'https://blob-uncached.example.net' }),
+      openStore: () => blobs,
+      publisherId: owner.sub,
+    })
 
     const created = await call(handler, event('POST', '', payload), owner)
     const createdBody = JSON.parse(created.body ?? '{}')
@@ -123,7 +159,11 @@ describe('published story Lambda compatibility entry point', () => {
 
   it('uses only Netlify-verified client context for publisher authorization', async () => {
     const blobs = new MemoryBlobsStore()
-    const handler = createPublishedStoryFunction({ connect() {}, openStore: () => blobs, publisherId: owner.sub })
+    const handler = createPublishedStoryFunction({
+      connect: () => ({ uncachedEdgeURL: 'https://blob-uncached.example.net' }),
+      openStore: () => blobs,
+      publisherId: owner.sub,
+    })
     const request = event('POST', '', payload)
     Object.assign(request.headers, { 'x-client-supplied-user-id': owner.sub })
 
@@ -136,7 +176,7 @@ describe('published story Lambda compatibility entry point', () => {
     const logs: unknown[][] = []
     let opened = false
     const handler = createPublishedStoryFunction({
-      connect() {},
+      connect: () => ({ uncachedEdgeURL: 'https://blob-uncached.example.net' }),
       openStore() { opened = true; return new MemoryBlobsStore() },
       logError: (...details) => logs.push(details),
       publisherId: owner.sub,
@@ -154,7 +194,7 @@ describe('published story Lambda compatibility entry point', () => {
     const initializationError = new Error('internal credential detail that must not be logged')
     initializationError.name = 'MissingBlobsEnvironmentError'
     const handler = createPublishedStoryFunction({
-      connect() {},
+      connect: () => ({ uncachedEdgeURL: 'https://blob-uncached.example.net' }),
       openStore() { throw initializationError },
       logError: (...details) => logs.push(details),
       publisherId: owner.sub,
@@ -164,5 +204,24 @@ describe('published story Lambda compatibility entry point', () => {
     expect(response.statusCode).toBe(500)
     expect(logs).toEqual([['Published story Blob initialization failed.', { errorName: 'MissingBlobsEnvironmentError' }]])
     expect(JSON.stringify(logs)).not.toContain('internal credential detail')
+  })
+
+  it('fails closed when Netlify omits the uncached endpoint instead of using eventual consistency', async () => {
+    const logs: unknown[][] = []
+    let opened = false
+    const handler = createPublishedStoryFunction({
+      openStore() { opened = true; return new MemoryBlobsStore() },
+      logError: (...details) => logs.push(details),
+      publisherId: owner.sub,
+    })
+    const request = withNetlifyHeaders(event('POST', '', payload, netlifyBlobsContext(false)))
+
+    const response = await call(handler, request, owner)
+    expect(response.statusCode).toBe(500)
+    expect(opened).toBe(false)
+    expect(logs).toEqual([[
+      'Published story Blob initialization failed.',
+      { errorName: 'MissingBlobsConsistencyEndpointError' },
+    ]])
   })
 })
