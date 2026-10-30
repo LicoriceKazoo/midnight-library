@@ -40,5 +40,6 @@ export type SaveStatus = 'saving' | 'saved' | 'error'
 
 export type View =
   | { name: 'library' }
+  | { name: 'audio' }
   | { name: 'story'; storyId: string }
   | { name: 'reader'; storyId: string; chapterId: string }

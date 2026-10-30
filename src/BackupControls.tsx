@@ -52,7 +52,7 @@ export function BackupControls({
   return (
     <section className="backup-controls">
       <div className="control-title"><Icon name="archive" size={18} /><span>Backup &amp; restore</span></div>
-      <p>Keep a portable copy of your complete library and reading settings.</p>
+      <p>Keep a portable copy of your stories and reading settings. Audio is stored separately and is not included.</p>
       <div className="backup-actions">
         <button onClick={exportBackup} type="button"><Icon name="download" size={17} /> Export</button>
         <button onClick={() => inputRef.current?.click()} type="button"><Icon name="upload" size={17} /> Import</button>

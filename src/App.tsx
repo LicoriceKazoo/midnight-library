@@ -1,5 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { AudioLibraryScreen } from './AudioLibraryScreen'
+import { AudioProvider } from './AudioProvider'
 import { BackupControls, RestoreBackupDialog } from './BackupControls'
+import { CompactAudioPlayer } from './CompactAudioPlayer'
 import { Icon } from './Icon'
 import { QuickNotesDrawer } from './QuickNotesDrawer'
 import { chapterToHtml, countWords, currentSchemaVersion, migrateState, normalizePreferences, preferenceLimits } from './model'
@@ -31,7 +34,7 @@ function formatDate(timestamp: number) {
   }).format(timestamp)
 }
 
-function App() {
+function AppContent() {
   const [stories, setStories] = useState<Story[]>([])
   const [preferences, setPreferences] = useState<ReadingPreferences>(defaultPreferences)
   const [view, setView] = useState<View>({ name: 'library' })
@@ -335,6 +338,8 @@ function App() {
         />
       )}
 
+      {view.name === 'audio' && <AudioLibraryScreen />}
+
       {view.name === 'reader' && activeStory && activeChapter && (
         <ReaderScreen
           chapter={activeChapter}
@@ -391,6 +396,7 @@ function App() {
         />
       )}
       {backupNotice && <div className="success-toast" role="status">{backupNotice}</div>}
+      <CompactAudioPlayer />
     </div>
   )
 }
@@ -415,7 +421,7 @@ function AppHeader({
       </button>
       <button className="header-brand" onClick={() => window.scrollTo({ top: 0 })} type="button">
         <span className="brand-star">✦</span>
-        <span>{view.name === 'library' ? 'Midnight Library' : activeStory?.title}</span>
+        <span>{view.name === 'library' ? 'Midnight Library' : view.name === 'audio' ? 'Audio Library' : activeStory?.title}</span>
       </button>
       <button aria-label="Open reading settings" className="icon-button" onClick={onMenu} type="button">
         <Icon name="settings" />
@@ -663,6 +669,7 @@ function NavigationDrawer({
         </div>
         <nav className="drawer-navigation" aria-label="Main navigation">
           <button className={view.name === 'library' ? 'active' : ''} onClick={() => onNavigate({ name: 'library' })} type="button"><Icon name="home" /> Library</button>
+          <button className={view.name === 'audio' ? 'active' : ''} onClick={() => onNavigate({ name: 'audio' })} type="button"><Icon name="music" /> Audio Library</button>
           {activeStory && <button className={view.name === 'story' ? 'active' : ''} onClick={() => onNavigate({ name: 'story', storyId: activeStory.id })} type="button"><Icon name="book" /> Story chapters</button>}
         </nav>
         <section className="reading-controls">
@@ -745,6 +752,10 @@ function EmptyState({ title, text, onCreate }: { title: string; text: string; on
       <button className="compact-gold-button" onClick={onCreate} type="button"><Icon name="plus" size={17} /> Create now</button>
     </section>
   )
+}
+
+function App() {
+  return <AudioProvider><AppContent /></AudioProvider>
 }
 
 export default App

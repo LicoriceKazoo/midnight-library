@@ -26,6 +26,10 @@ Story titles and multiline descriptions can be edited from the library or story
 view. The navigation drawer also supports versioned JSON exports and validated,
 replacement-only restores of the complete library and reading preferences.
 
+The integrated audio milestone stores browser-playable audio in separate local
+IndexedDB stores, with playlists and persistent playback controls. Audio files are
+intentionally excluded from portable story JSON backups.
+
 ```sh
 npm run build  # Type-check and build for production
 npm run lint   # Run Oxlint
