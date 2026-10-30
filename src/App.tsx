@@ -5,6 +5,7 @@ import { BackupControls, RestoreBackupDialog } from './BackupControls'
 import { CompactAudioPlayer } from './CompactAudioPlayer'
 import { Icon } from './Icon'
 import { QuickNotesDrawer } from './QuickNotesDrawer'
+import { PwaStatus } from './PwaStatus'
 import { chapterToHtml, countWords, currentSchemaVersion, migrateState, normalizePreferences, preferenceLimits } from './model'
 import { defaultPreferences, sampleStories } from './sampleData'
 import { loadState, saveState } from './storage'
@@ -396,6 +397,7 @@ function AppContent() {
         />
       )}
       {backupNotice && <div className="success-toast" role="status">{backupNotice}</div>}
+      <PwaStatus beforeUpdate={() => saveState({ schemaVersion: currentSchemaVersion, stories, preferences })} />
       <CompactAudioPlayer />
     </div>
   )

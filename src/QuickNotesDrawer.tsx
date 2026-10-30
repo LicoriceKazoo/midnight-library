@@ -38,10 +38,17 @@ export function QuickNotesDrawer({
       <aside aria-hidden={!open} aria-label={`Quick notes for ${storyTitle}`} className={`notes-sheet ${open ? 'is-open' : ''}`} inert={!open}>
         <div
           className="notes-drag-zone"
-          onPointerDown={(event) => { dragStart.current = event.clientY }}
+          onPointerCancel={() => { dragStart.current = null }}
+          onPointerDown={(event) => {
+            dragStart.current = event.clientY
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }}
           onPointerUp={(event) => {
             if (dragStart.current !== null && event.clientY - dragStart.current > 70) onClose()
             dragStart.current = null
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }
           }}
         >
           <span className="drag-handle" />

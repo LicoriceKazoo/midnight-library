@@ -30,6 +30,10 @@ The integrated audio milestone stores browser-playable audio in separate local
 IndexedDB stores, with playlists and persistent playback controls. Audio files are
 intentionally excluded from portable story JSON backups.
 
+The mobile deployment milestone adds an installable, offline-capable Progressive
+Web App with safe, user-confirmed updates. See [DEPLOYMENT.md](DEPLOYMENT.md) for
+free Netlify and Vercel setup, Galaxy S24 installation, and device data guidance.
+
 ```sh
 npm run build  # Type-check and build for production
 npm run lint   # Run Oxlint

@@ -1,5 +1,17 @@
 import { expect, test } from '@playwright/test'
 
+async function swipeQuickNotesDown(page: import('@playwright/test').Page) {
+  const handle = page.locator('.notes-drag-zone')
+  const box = await handle.boundingBox()
+  if (!box) throw new Error('Quick Notes drag handle is not visible.')
+  const client = await page.context().newCDPSession(page)
+  const x = box.x + box.width / 2
+  const startY = box.y + box.height / 2
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: startY }] })
+  await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: startY + 100 }] })
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+}
+
 async function openSampleChapter(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: /The Lantern Keeper/ }).click()
   await page.locator('.chapter-open').filter({ hasText: 'The Light Beyond the Breakwater' }).click()
@@ -48,7 +60,8 @@ test('persists reading preferences, formatted editing, and quick notes on mobile
   await page.getByRole('button', { name: /New note/ }).click()
   await page.locator('.note-card textarea').fill('Remember the blue lantern at the harbor gate.')
   await expect(page.locator('.notes-footer')).toContainText('Saved locally')
-  await page.locator('.notes-header').getByRole('button', { name: 'Close quick notes' }).click()
+  await swipeQuickNotesDown(page)
+  await expect(page.locator('.notes-sheet')).not.toHaveClass(/is-open/)
 
   await page.reload()
   await page.getByRole('button', { name: 'Open reading settings' }).click()
