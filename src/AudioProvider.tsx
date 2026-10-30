@@ -44,6 +44,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         nextState.playlists = nextState.playlists.map((playlist) => ({
           ...playlist,
           trackIds: playlist.trackIds.filter((id) => trackIds.has(id)),
+          lastTrackId: playlist.lastTrackId && playlist.trackIds.includes(playlist.lastTrackId) && trackIds.has(playlist.lastTrackId)
+            ? playlist.lastTrackId
+            : undefined,
         }))
         if (nextState.playback.currentTrackId && !trackIds.has(nextState.playback.currentTrackId)) {
           nextState.playback.currentTrackId = undefined
@@ -126,18 +129,28 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   }
 
   const selectTrack = (trackId: string, playlistId?: string, autoplay = true) => {
-    autoplayRequested.current = autoplay
-    lastStoredPosition.current = 0
-    setProgress(0)
+    const sameTrack = library.playback.currentTrackId === trackId
+    const audio = audioRef.current
+    autoplayRequested.current = autoplay && (!sameTrack || !audio?.src || audio.readyState < 1)
+    if (!sameTrack) {
+      lastStoredPosition.current = 0
+      setProgress(0)
+    }
     setLibrary((current) => ({
       ...current,
+      playlists: playlistId
+        ? current.playlists.map((playlist) => playlist.id === playlistId
+          ? { ...playlist, lastTrackId: trackId, updatedAt: Date.now() }
+          : playlist)
+        : current.playlists,
       playback: {
         ...current.playback,
         currentTrackId: trackId,
         currentPlaylistId: playlistId,
-        position: 0,
+        position: sameTrack ? current.playback.position : 0,
       },
     }))
+    if (autoplay && sameTrack && audio?.src && audio.readyState >= 1) void attemptPlay()
   }
 
   const move = (direction: 'next' | 'previous', autoplay = true) => {
@@ -263,14 +276,29 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setPlaylistTracks: (playlistId, trackIds) => setLibrary((current) => ({
       ...current,
       playlists: current.playlists.map((playlist) =>
-        playlist.id === playlistId ? { ...playlist, trackIds: [...new Set(trackIds)], updatedAt: Date.now() } : playlist,
+        playlist.id === playlistId
+          ? {
+              ...playlist,
+              trackIds: [...new Set(trackIds)],
+              lastTrackId: playlist.lastTrackId && trackIds.includes(playlist.lastTrackId)
+                ? playlist.lastTrackId
+                : undefined,
+              updatedAt: Date.now(),
+            }
+          : playlist,
       ),
     })),
     playTrack: (trackId, playlistId) => selectTrack(trackId, playlistId),
     playPlaylist: (playlistId) => {
       const playlist = library.playlists.find((item) => item.id === playlistId)
-      const firstTrack = playlist?.trackIds.find((id) => tracks.some((track) => track.id === id))
-      if (firstTrack) selectTrack(firstTrack, playlistId)
+      const availableTrackIds = playlist?.trackIds.filter((id) => tracks.some((track) => track.id === id)) ?? []
+      const resumableTrack = library.playback.currentPlaylistId === playlistId &&
+        library.playback.currentTrackId && availableTrackIds.includes(library.playback.currentTrackId)
+        ? library.playback.currentTrackId
+        : playlist?.lastTrackId && availableTrackIds.includes(playlist.lastTrackId)
+          ? playlist.lastTrackId
+          : availableTrackIds[0]
+      if (resumableTrack) selectTrack(resumableTrack, playlistId)
     },
     togglePlay: () => {
       const audio = audioRef.current

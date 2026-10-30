@@ -29,6 +29,7 @@ export function migrateAudioState(state?: Partial<AudioLibraryState>): AudioLibr
         ).map((playlist) => ({
           ...playlist,
           trackIds: playlist.trackIds.filter((id) => typeof id === 'string'),
+          lastTrackId: typeof playlist.lastTrackId === 'string' ? playlist.lastTrackId : undefined,
         }))
       : [],
     playback: {
@@ -104,6 +105,7 @@ export function removeTrackFromPlaylists(playlists: AudioPlaylist[], trackId: st
   return playlists.map((playlist) => ({
     ...playlist,
     trackIds: playlist.trackIds.filter((id) => id !== trackId),
+    lastTrackId: playlist.lastTrackId === trackId ? undefined : playlist.lastTrackId,
     updatedAt: playlist.trackIds.includes(trackId) ? Date.now() : playlist.updatedAt,
   }))
 }

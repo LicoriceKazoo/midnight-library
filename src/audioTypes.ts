@@ -12,6 +12,7 @@ export type AudioPlaylist = {
   id: string
   name: string
   trackIds: string[]
+  lastTrackId?: string
   createdAt: number
   updatedAt: number
 }

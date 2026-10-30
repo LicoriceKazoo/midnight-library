@@ -1,5 +1,28 @@
 import { expect, test } from '@playwright/test'
 
+function createPlayableWav(frequency: number) {
+  const sampleRate = 8_000
+  const sampleCount = sampleRate * 4
+  const buffer = Buffer.alloc(44 + sampleCount * 2)
+  buffer.write('RIFF', 0)
+  buffer.writeUInt32LE(buffer.length - 8, 4)
+  buffer.write('WAVE', 8)
+  buffer.write('fmt ', 12)
+  buffer.writeUInt32LE(16, 16)
+  buffer.writeUInt16LE(1, 20)
+  buffer.writeUInt16LE(1, 22)
+  buffer.writeUInt32LE(sampleRate, 24)
+  buffer.writeUInt32LE(sampleRate * 2, 28)
+  buffer.writeUInt16LE(2, 32)
+  buffer.writeUInt16LE(16, 34)
+  buffer.write('data', 36)
+  buffer.writeUInt32LE(sampleCount * 2, 40)
+  for (let sample = 0; sample < sampleCount; sample += 1) {
+    buffer.writeInt16LE(Math.round(Math.sin(2 * Math.PI * frequency * sample / sampleRate) * 4_000), 44 + sample * 2)
+  }
+  return buffer
+}
+
 async function openAudioLibrary(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: 'Open navigation menu' }).click()
   await page.getByRole('button', { name: 'Audio Library' }).click()
@@ -23,8 +46,8 @@ test('stores tracks and playlists and preserves the player across app navigation
   await expect(page.getByText(/not a browser-playable audio file/)).toBeVisible()
 
   await page.getByLabel('Choose audio files').setInputFiles([
-    { name: 'rain-one.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('first-audio') },
-    { name: 'harbor-two.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('second-audio') },
+    { name: 'rain-one.wav', mimeType: 'audio/wav', buffer: createPlayableWav(220) },
+    { name: 'harbor-two.wav', mimeType: 'audio/wav', buffer: createPlayableWav(330) },
   ])
   await expect(page.locator('.audio-track-card')).toHaveCount(2)
 
@@ -36,6 +59,8 @@ test('stores tracks and playlists and preserves the player across app navigation
   await page.getByRole('button', { name: /New playlist/ }).click()
   await page.getByLabel('Playlist name').fill('Harbor Reading')
   await page.getByRole('button', { name: 'Create' }).click()
+  await expect(page.getByRole('button', { name: 'Play Harbor Reading' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Play Harbor Reading' })).toHaveAttribute('title', 'Add tracks before playing')
   await page.getByRole('button', { name: 'Tracks' }).click()
   const trackChoices = page.locator('.playlist-track-picker input')
   await trackChoices.nth(0).check()
@@ -48,12 +73,26 @@ test('stores tracks and playlists and preserves the player across app navigation
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.locator('.playlist-card')).toContainText('Storm Reading')
 
-  await page.getByRole('button', { name: 'Play Storm Reading' }).click()
   const player = page.locator('.compact-audio-player')
+  await page.locator('.audio-track-card').first().getByRole('button', { name: /Play/ }).click()
+  await expect.poll(() => page.locator('audio').evaluate((element: HTMLAudioElement) => element.paused)).toBe(false)
+  await player.getByRole('button', { name: 'Pause' }).click()
+  await expect.poll(() => page.locator('audio').evaluate((element: HTMLAudioElement) => element.paused)).toBe(true)
+  const pausedAt = await page.locator('audio').evaluate((element: HTMLAudioElement) => element.currentTime)
+
+  await page.getByRole('button', { name: 'Play Storm Reading' }).click()
   await expect(player).toContainText('Rain at Midnight')
+  await expect.poll(() => page.locator('audio').evaluate((element: HTMLAudioElement) => element.paused)).toBe(false)
+  await expect.poll(() => page.locator('audio').evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(pausedAt + 0.05)
   await player.getByRole('button', { name: 'Expand audio player' }).click()
   await player.getByRole('button', { name: 'Next track' }).click()
   await expect(player).toContainText('harbor two')
+  await expect.poll(() => page.locator('audio').evaluate((element: HTMLAudioElement) => element.paused)).toBe(false)
+  await page.locator('.audio-track-card').first().getByRole('button', { name: /Play/ }).click()
+  await expect(player).toContainText('Rain at Midnight')
+  await page.getByRole('button', { name: 'Play Storm Reading' }).click()
+  await expect(player).toContainText('harbor two')
+  await expect.poll(() => page.locator('audio').evaluate((element: HTMLAudioElement) => element.paused)).toBe(false)
   await player.getByRole('button', { name: 'Previous track' }).click()
   await expect(player).toContainText('Rain at Midnight')
   await player.getByRole('button', { name: 'Repeat: off' }).click()

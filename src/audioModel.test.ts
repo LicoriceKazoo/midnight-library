@@ -28,8 +28,9 @@ describe('audio playback navigation', () => {
   })
 
   it('removes deleted tracks from every playlist', () => {
-    const updated = removeTrackFromPlaylists(playlists, 'c')
+    const updated = removeTrackFromPlaylists([{ ...playlists[0], lastTrackId: 'c' }], 'c')
     expect(updated[0].trackIds).toEqual(['missing', 'a'])
+    expect(updated[0].lastTrackId).toBeUndefined()
   })
 })
 
@@ -41,5 +42,13 @@ describe('audio state migration', () => {
       playback: { position: 42, volume: 4, muted: true, repeatMode: 'playlist', shuffle: true },
     })
     expect(state.playback).toMatchObject({ position: 42, volume: 1, muted: true, repeatMode: 'playlist', shuffle: true })
+  })
+
+  it('preserves a playlist last-track pointer during migration', () => {
+    const state = migrateAudioState({
+      schemaVersion: 1,
+      playlists: [{ ...playlists[0], lastTrackId: 'a' }],
+    })
+    expect(state.playlists[0].lastTrackId).toBe('a')
   })
 })

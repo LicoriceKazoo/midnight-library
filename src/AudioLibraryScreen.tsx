@@ -113,7 +113,7 @@ export function AudioLibraryScreen() {
               <article className="playlist-card" key={playlist.id}>
                 <div className="playlist-symbol"><Icon name="playlist" size={23} /></div>
                 <div className="playlist-copy"><strong>{playlist.name}</strong><span>{playlist.trackIds.length} {playlist.trackIds.length === 1 ? 'track' : 'tracks'}</span></div>
-                <button aria-label={`Play ${playlist.name}`} className="playlist-play" disabled={!playlist.trackIds.length} onClick={() => audio.playPlaylist(playlist.id)} type="button"><Icon name="play" size={17} /></button>
+                <button aria-label={`Play ${playlist.name}`} className="playlist-play" disabled={!playlist.trackIds.length} onClick={() => audio.playPlaylist(playlist.id)} title={playlist.trackIds.length ? `Play ${playlist.name}` : 'Add tracks before playing'} type="button"><Icon name="play" size={17} /></button>
                 <div className="playlist-actions">
                   <button onClick={() => setDialog({ type: 'manage-playlist', playlist })} type="button">Tracks</button>
                   <button onClick={() => setDialog({ type: 'rename-playlist', playlist })} type="button">Rename</button>
