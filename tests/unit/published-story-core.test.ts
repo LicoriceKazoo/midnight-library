@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Handler, HandlerContext, HandlerEvent, HandlerResponse } from '@netlify/functions'
-import { createPublishedStoryHandler, type PublishedStoryStore } from './published-story-core.js'
+import { createPublishedStoryHandler, type PublishedStoryStore } from '../../netlify/lib/published-story-core.js'
 
 const publicationId = '123e4567-e89b-42d3-a456-426614174000'
 const owner = { sub: 'publisher-user-id', email: 'owner@example.com' }

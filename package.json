@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "vitest run src netlify/functions",
+    "test": "vitest run src tests/unit",
     "test:e2e": "playwright test",
     "typecheck": "tsc -b --noEmit",
     "preview": "vite preview"

@@ -1,6 +1,6 @@
 import { getStore } from '@netlify/blobs'
 import type { Handler } from '@netlify/functions'
-import { createPublishedStoryHandler, type PublishedStoryStore } from './published-story-core.js'
+import { createPublishedStoryHandler, type PublishedStoryStore } from '../lib/published-story-core.js'
 
 const blobs = getStore({ name: 'midnight-library-published-stories', consistency: 'strong' })
 

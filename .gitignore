@@ -30,6 +30,7 @@ dist-ssr
 !.env.*.example
 
 # Generated caches and test output
+.netlify/
 .vite/
 .cache/
 coverage/
