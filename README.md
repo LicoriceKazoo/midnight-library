@@ -17,9 +17,16 @@ chapter management, a continuous reading view, persisted reading preferences,
 and local IndexedDB storage. The included stories are labeled sample content and
 can be safely renamed or deleted.
 
+The editing milestone adds rich-text chapter editing with formatting history and
+text colors, automatic save status, story-level quick notes, and expanded reading
+comfort controls. Older paragraph-based chapters are migrated automatically when
+they are opened.
+
 ```sh
 npm run build  # Type-check and build for production
 npm run lint   # Run Oxlint
+npm test       # Run migration and IndexedDB persistence tests
+npm run test:e2e  # Run the mobile browser journey with system Chromium
 npm run typecheck  # Run TypeScript checks without emitting files
 npm run preview -- --host 0.0.0.0  # Preview the production build
 ```

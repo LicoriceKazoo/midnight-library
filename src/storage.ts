@@ -1,13 +1,8 @@
-import type { ReadingPreferences, Story } from './types'
+import type { AppState } from './types'
 
 const databaseName = 'midnight-library'
 const storeName = 'app-state'
-const databaseVersion = 1
-
-type StoredState = {
-  stories: Story[]
-  preferences: ReadingPreferences
-}
+const databaseVersion = 2
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -25,20 +20,20 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-export async function loadState(): Promise<StoredState | undefined> {
+export async function loadState(): Promise<Partial<AppState> | undefined> {
   const database = await openDatabase()
 
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(storeName, 'readonly')
     const request = transaction.objectStore(storeName).get('current')
 
-    request.onsuccess = () => resolve(request.result as StoredState | undefined)
+    request.onsuccess = () => resolve(request.result as Partial<AppState> | undefined)
     request.onerror = () => reject(request.error)
     transaction.oncomplete = () => database.close()
   })
 }
 
-export async function saveState(state: StoredState): Promise<void> {
+export async function saveState(state: AppState): Promise<void> {
   const database = await openDatabase()
 
   return new Promise((resolve, reject) => {

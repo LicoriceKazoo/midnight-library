@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
+import { QuickNotesDrawer } from './QuickNotesDrawer'
+import { chapterToHtml, countWords, currentSchemaVersion, migrateState, normalizePreferences, preferenceLimits } from './model'
 import { defaultPreferences, sampleStories } from './sampleData'
 import { loadState, saveState } from './storage'
-import type { Chapter, ReadingPreferences, Story, View } from './types'
+import type { Chapter, Note, ReadingPreferences, SaveStatus, Story, View } from './types'
 import './App.css'
+
+const RichTextEditor = lazy(() =>
+  import('./RichTextEditor').then((module) => ({ default: module.RichTextEditor })),
+)
 
 type DialogState =
   | { type: 'create-story' }
@@ -29,18 +35,25 @@ function App() {
   const [preferences, setPreferences] = useState<ReadingPreferences>(defaultPreferences)
   const [view, setView] = useState<View>({ name: 'library' })
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
   const [dialog, setDialog] = useState<DialogState>(null)
   const [hydrated, setHydrated] = useState(false)
   const [storageError, setStorageError] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
+  const readingPosition = useRef(0)
+  const saveSequence = useRef(0)
 
   useEffect(() => {
     loadState()
       .then((stored) => {
-        setStories(stored?.stories ?? cloneSamples())
-        setPreferences(stored?.preferences ?? defaultPreferences)
+        const state = migrateState(stored, cloneSamples())
+        setStories(state.stories)
+        setPreferences(state.preferences)
       })
       .catch(() => {
-        setStories(cloneSamples())
+        const state = migrateState(undefined, cloneSamples())
+        setStories(state.stories)
+        setPreferences(state.preferences)
         setStorageError(true)
       })
       .finally(() => setHydrated(true))
@@ -48,25 +61,37 @@ function App() {
 
   useEffect(() => {
     if (!hydrated) return
-    saveState({ stories, preferences }).catch(() => setStorageError(true))
+    const sequence = ++saveSequence.current
+    const saveTimer = window.setTimeout(() => {
+      saveState({ schemaVersion: currentSchemaVersion, stories, preferences })
+        .then(() => {
+          if (sequence === saveSequence.current) setSaveStatus('saved')
+        })
+        .catch(() => {
+          if (sequence === saveSequence.current) setSaveStatus('error')
+          setStorageError(true)
+        })
+    }, 350)
+    return () => window.clearTimeout(saveTimer)
   }, [hydrated, preferences, stories])
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (dialog) setDialog(null)
+      else if (notesOpen) closeNotes()
       else setDrawerOpen(false)
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [dialog])
+  }, [dialog, notesOpen])
 
   useEffect(() => {
-    document.body.style.overflow = drawerOpen || dialog ? 'hidden' : ''
+    document.body.style.overflow = drawerOpen || dialog || notesOpen ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
     }
-  }, [dialog, drawerOpen])
+  }, [dialog, drawerOpen, notesOpen])
 
   const activeStory = useMemo(
     () => ('storyId' in view ? stories.find((story) => story.id === view.storyId) : undefined),
@@ -83,19 +108,70 @@ function App() {
   const navigate = (nextView: View) => {
     setView(nextView)
     setDrawerOpen(false)
+    setNotesOpen(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const updateStory = (storyId: string, transform: (story: Story) => Story) => {
+    setSaveStatus('saving')
     setStories((current) =>
       current.map((story) => (story.id === storyId ? transform(story) : story)),
     )
+  }
+
+  const updateChapterContent = (storyId: string, chapterId: string, contentHtml: string) => {
+    const now = Date.now()
+    updateStory(storyId, (story) => ({
+      ...story,
+      updatedAt: now,
+      chapters: story.chapters.map((chapter) =>
+        chapter.id === chapterId ? { ...chapter, contentHtml, updatedAt: now } : chapter,
+      ),
+    }))
+  }
+
+  const openNotes = () => {
+    readingPosition.current = window.scrollY
+    setNotesOpen(true)
+  }
+
+  function closeNotes() {
+    setNotesOpen(false)
+    requestAnimationFrame(() => window.scrollTo({ top: readingPosition.current }))
+  }
+
+  const addNote = (storyId: string) => {
+    const note: Note = {
+      id: crypto.randomUUID(),
+      text: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    updateStory(storyId, (story) => ({ ...story, notes: [...(story.notes ?? []), note] }))
+    return note.id
+  }
+
+  const updateNote = (storyId: string, noteId: string, text: string) => {
+    updateStory(storyId, (story) => ({
+      ...story,
+      notes: (story.notes ?? []).map((note) =>
+        note.id === noteId ? { ...note, text, updatedAt: Date.now() } : note,
+      ),
+    }))
+  }
+
+  const deleteNote = (storyId: string, noteId: string) => {
+    updateStory(storyId, (story) => ({
+      ...story,
+      notes: (story.notes ?? []).filter((note) => note.id !== noteId),
+    }))
   }
 
   const handleDialogSubmit = (value?: string) => {
     if (!dialog) return
     const title = value?.trim()
     const now = Date.now()
+    setSaveStatus('saving')
 
     if (dialog.type === 'create-story' && title) {
       const story: Story = {
@@ -105,6 +181,7 @@ function App() {
         createdAt: now,
         updatedAt: now,
         chapters: [],
+        notes: [],
       }
       setStories((current) => [story, ...current])
       setDialog(null)
@@ -125,7 +202,7 @@ function App() {
       const chapter: Chapter = {
         id: crypto.randomUUID(),
         title,
-        paragraphs: [],
+        contentHtml: '<p></p>',
         createdAt: now,
         updatedAt: now,
       }
@@ -228,7 +305,14 @@ function App() {
       )}
 
       {view.name === 'reader' && activeStory && activeChapter && (
-        <ReaderScreen chapter={activeChapter} preferences={preferences} story={activeStory} />
+        <ReaderScreen
+          chapter={activeChapter}
+          preferences={preferences}
+          saveStatus={saveStatus}
+          story={activeStory}
+          onChange={(contentHtml) => updateChapterContent(activeStory.id, activeChapter.id, contentHtml)}
+          onOpenNotes={openNotes}
+        />
       )}
 
       <NavigationDrawer
@@ -238,11 +322,27 @@ function App() {
         view={view}
         onClose={() => setDrawerOpen(false)}
         onNavigate={navigate}
-        onPreferences={setPreferences}
+        onPreferences={(nextPreferences) => {
+          setSaveStatus('saving')
+          setPreferences(nextPreferences)
+        }}
       />
 
       {dialog && (
         <ActionDialog dialog={dialog} onCancel={() => setDialog(null)} onSubmit={handleDialogSubmit} />
+      )}
+
+      {activeStory && (
+        <QuickNotesDrawer
+          notes={activeStory.notes ?? []}
+          open={notesOpen}
+          saveStatus={saveStatus}
+          storyTitle={activeStory.title}
+          onAdd={() => addNote(activeStory.id)}
+          onClose={closeNotes}
+          onDelete={(noteId) => deleteNote(activeStory.id, noteId)}
+          onUpdate={(noteId, text) => updateNote(activeStory.id, noteId, text)}
+        />
       )}
     </div>
   )
@@ -369,7 +469,7 @@ function StoryScreen({
             <li className="chapter-row" key={chapter.id}>
               <button className="chapter-open" onClick={() => onOpen(chapter.id)} type="button">
                 <span className="chapter-number">{String(index + 1).padStart(2, '0')}</span>
-                <span><strong>{chapter.title}</strong><small>{chapter.paragraphs.length ? `${chapter.paragraphs.length} passages` : 'Empty chapter'}</small></span>
+                <span><strong>{chapter.title}</strong><small>{countWords(chapterToHtml(chapter)) ? `${countWords(chapterToHtml(chapter))} words` : 'Empty chapter'}</small></span>
                 <Icon name="chevron-right" size={18} />
               </button>
               <div className="chapter-actions">
@@ -385,23 +485,55 @@ function StoryScreen({
 }
 
 function ReaderScreen({
-  chapter, preferences, story,
+  chapter, preferences, saveStatus, story, onChange, onOpenNotes,
 }: {
   chapter: Chapter
   preferences: ReadingPreferences
+  saveStatus: SaveStatus
   story: Story
+  onChange: (contentHtml: string) => void
+  onOpenNotes: () => void
 }) {
-  const pageSize = 4
-  const pages = Array.from(
-    { length: Math.ceil(chapter.paragraphs.length / pageSize) },
-    (_, index) => chapter.paragraphs.slice(index * pageSize, index * pageSize + pageSize),
-  )
+  const [editing, setEditing] = useState(false)
+  const scrollRatio = useRef(0)
+  const contentHtml = chapterToHtml(chapter)
+  const pages = useMemo(() => paginateHtml(contentHtml), [contentHtml])
+
+  const switchMode = (nextEditing: boolean) => {
+    const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight
+    scrollRatio.current = scrollableHeight > 0 ? window.scrollY / scrollableHeight : 0
+    setEditing(nextEditing)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const nextHeight = document.documentElement.scrollHeight - window.innerHeight
+      window.scrollTo({ top: Math.max(0, scrollRatio.current * nextHeight) })
+    }))
+  }
+
+  if (editing) {
+    return (
+      <Suspense fallback={<EditorLoading />}>
+        <RichTextEditor
+          chapter={chapter}
+          contentHtml={contentHtml}
+          preferences={preferences}
+          saveStatus={saveStatus}
+          story={story}
+          onChange={onChange}
+          onDone={() => switchMode(false)}
+        />
+      </Suspense>
+    )
+  }
 
   return (
     <main
       className="reader-screen"
       style={{ '--reader-font-size': `${preferences.fontSize}px`, '--reader-line-height': preferences.lineHeight } as React.CSSProperties}
     >
+      <div className="reader-action-bar">
+        <button onClick={() => switchMode(true)} type="button"><Icon name="edit" size={17} /> Edit chapter</button>
+        <button aria-label="Open quick notes" onClick={onOpenNotes} type="button"><Icon name="notebook" size={18} /><span>Notes</span></button>
+      </div>
       <header className="reader-title">
         {story.isSample && <span className="sample-badge">Sample reading</span>}
         <p>{story.title}</p>
@@ -409,24 +541,18 @@ function ReaderScreen({
         <span className="title-flourish">✦</span>
       </header>
 
-      {pages.length === 0 ? (
+      {countWords(contentHtml) === 0 ? (
         <section className="empty-reading-page">
           <Icon name="book" size={28} />
           <h2>This chapter is empty</h2>
-          <p>Story editing tools will arrive in the next milestone.</p>
+          <p>Choose Edit chapter to begin writing.</p>
         </section>
       ) : (
         <div className="reading-pages">
-          {pages.map((paragraphs, pageIndex) => (
+          {pages.map((pageHtml, pageIndex) => (
             <article className="reading-page" key={`${chapter.id}-${pageIndex}`}>
               <span className="page-ornament" aria-hidden="true">✦</span>
-              {paragraphs.map((paragraph, index) =>
-                pageIndex === 0 && index === 0 ? (
-                  <p className="sample-notice" key={paragraph}>{paragraph}</p>
-                ) : (
-                  <p className={pageIndex === 0 && index === 1 ? 'opening-paragraph' : ''} key={`${paragraph.slice(0, 24)}-${index}`}>{paragraph}</p>
-                ),
-              )}
+              <div className="rich-reading-content" dangerouslySetInnerHTML={{ __html: pageHtml }} />
               <span className="page-number">{pageIndex + 1}</span>
             </article>
           ))}
@@ -434,6 +560,30 @@ function ReaderScreen({
       )}
     </main>
   )
+}
+
+function EditorLoading() {
+  return (
+    <main className="editor-loading">
+      <span className="brand-mark">✦</span>
+      <p>Preparing your writing space…</p>
+    </main>
+  )
+}
+
+function paginateHtml(html: string) {
+  const container = document.createElement('div')
+  container.innerHTML = html
+  const blocks = Array.from(container.children)
+  if (blocks[0]?.textContent?.startsWith('Sample story')) blocks[0].classList.add('sample-notice')
+  const openingParagraph = blocks.find((block) => !block.classList.contains('sample-notice'))
+  openingParagraph?.classList.add('opening-paragraph')
+
+  const pages: string[] = []
+  for (let index = 0; index < blocks.length; index += 4) {
+    pages.push(blocks.slice(index, index + 4).map((block) => block.outerHTML).join(''))
+  }
+  return pages
 }
 
 function NavigationDrawer({
@@ -448,7 +598,7 @@ function NavigationDrawer({
   onPreferences: (preferences: ReadingPreferences) => void
 }) {
   const setLineHeight = (lineHeight: number) =>
-    onPreferences({ ...preferences, lineHeight: Math.min(2.15, Math.max(1.35, lineHeight)) })
+    onPreferences(normalizePreferences({ ...preferences, lineHeight }))
 
   return (
     <>
@@ -465,13 +615,21 @@ function NavigationDrawer({
         <section className="reading-controls">
           <div className="control-title"><Icon name="settings" size={18} /><span>Reading comfort</span></div>
           <label htmlFor="font-size">Font size <output>{preferences.fontSize}px</output></label>
-          <input id="font-size" max="24" min="15" onChange={(event) => onPreferences({ ...preferences, fontSize: Number(event.target.value) })} type="range" value={preferences.fontSize} />
+          <input
+            id="font-size"
+            max={preferenceLimits.fontSize.max}
+            min={preferenceLimits.fontSize.min}
+            onChange={(event) => onPreferences(normalizePreferences({ ...preferences, fontSize: Number(event.target.value) }))}
+            style={{ '--range-progress': `${((preferences.fontSize - preferenceLimits.fontSize.min) / (preferenceLimits.fontSize.max - preferenceLimits.fontSize.min)) * 100}%` } as React.CSSProperties}
+            type="range"
+            value={preferences.fontSize}
+          />
           <div className="line-control">
             <span>Line spacing</span>
             <div>
-              <button aria-label="Decrease line spacing" disabled={preferences.lineHeight <= 1.35} onClick={() => setLineHeight(preferences.lineHeight - 0.2)} type="button"><Icon name="minus" size={18} /></button>
+              <button aria-label="Decrease line spacing" disabled={preferences.lineHeight <= preferenceLimits.lineHeight.min} onClick={() => setLineHeight(preferences.lineHeight - 0.1)} type="button"><Icon name="minus" size={18} /></button>
               <output>{preferences.lineHeight.toFixed(2)}</output>
-              <button aria-label="Increase line spacing" disabled={preferences.lineHeight >= 2.15} onClick={() => setLineHeight(preferences.lineHeight + 0.2)} type="button"><Icon name="plus" size={18} /></button>
+              <button aria-label="Increase line spacing" disabled={preferences.lineHeight >= preferenceLimits.lineHeight.max} onClick={() => setLineHeight(preferences.lineHeight + 0.1)} type="button"><Icon name="plus" size={18} /></button>
             </div>
           </div>
           <p className="control-preview" style={{ fontSize: `${Math.min(preferences.fontSize, 20)}px`, lineHeight: preferences.lineHeight }}>The night was quiet, and every page felt like a small illuminated window.</p>
