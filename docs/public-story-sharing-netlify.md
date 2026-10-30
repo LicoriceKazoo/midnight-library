@@ -43,7 +43,7 @@ Perform these steps only after reviewing and approving this branch:
 1. Merge the approved branch through the normal review process. Keep the existing Netlify site and HTTPS address.
 2. In the existing site's Netlify dashboard, open **Identity** and choose **Enable Identity**.
 3. Under **Registration preferences**, choose **Invite only**. Do not enable open registration. External login providers are unnecessary for a single publisher.
-4. Invite the owner's email address and complete the invitation using a strong, unique password.
+4. Invite the owner's email address. Open the newest invitation link on the deployed site and use the automatically opened **Complete your signup** dialog to choose a strong, unique password.
 5. Open the new Identity user's details and copy the stable user ID/UID, not merely the email address.
 6. Open **Site configuration → Environment variables** and add `MIDNIGHT_LIBRARY_PUBLISHER_ID` with that user ID. Scope it to Functions and to every deploy context where publishing should be allowed. The value is a server-side authorization setting; do not prefix it with `VITE_` or put it in source control.
 7. Deploy the approved commit. Confirm that Netlify detects `netlify/functions/published-story.ts` and that the deployment's Node version is 24 as configured in `netlify.toml`.
@@ -52,6 +52,8 @@ Perform these steps only after reviewing and approving this branch:
 10. Open the generated link in a private browser window. It should load without authentication and contain only the selected public content.
 
 Even if registration is accidentally opened later, a newly registered user cannot publish because the Function also requires the exact `MIDNIGHT_LIBRARY_PUBLISHER_ID` subject.
+
+Invitation and password-recovery email links land on the application with a short-lived token in the URL fragment. The app initializes Netlify Identity only for a recognized callback, and the widget removes the fragment as it opens the password dialog. The application does not log or persist these tokens. If the dialog reports an expired or invalid link, request a new invitation or password-reset email and use only the newest message.
 
 ## Security and privacy behavior
 
