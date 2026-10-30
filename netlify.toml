@@ -2,6 +2,29 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  NODE_VERSION = "24"
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/published-stories"
+  to = "/.netlify/functions/published-story"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/published-stories/*"
+  to = "/.netlify/functions/published-story/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/share/*"
+  to = "/index.html"
+  status = 200
+
 [[headers]]
   for = "/sw.js"
   [headers.values]
@@ -11,3 +34,9 @@
   for = "/manifest.webmanifest"
   [headers.values]
     Content-Type = "application/manifest+json"
+
+[[headers]]
+  for = "/share/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+    Cache-Control = "public, max-age=0, must-revalidate"

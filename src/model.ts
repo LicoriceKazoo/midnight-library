@@ -1,6 +1,6 @@
 import type { AppState, Chapter, ReadingPreferences, ReadingTheme, Story } from './types'
 
-export const currentSchemaVersion = 3
+export const currentSchemaVersion = 4
 export const readingThemes: { id: ReadingTheme; name: string; colors: [string, string, string] }[] = [
   { id: 'midnight', name: 'Midnight Navy', colors: ['#080d19', '#111928', '#e4c57d'] },
   { id: 'amethyst', name: 'Amethyst Dusk', colors: ['#120d1a', '#21162d', '#c9a9df'] },

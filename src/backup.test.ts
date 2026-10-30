@@ -5,25 +5,33 @@ import { loadState, saveState } from './storage'
 import type { AppState } from './types'
 
 const state: AppState = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   preferences: { fontSize: 22, lineHeight: 4.85, theme: 'amethyst' },
   stories: [
     {
       id: 'story-one',
       title: 'The Harbor Light',
       description: 'A description\nwith two lines.',
+      isSample: undefined,
       createdAt: 10,
       updatedAt: 20,
       chapters: [
         {
           id: 'chapter-one',
           title: 'Blue Lanterns',
+          paragraphs: undefined,
           contentHtml: '<h2>Nightfall</h2><p data-indent="2" data-first-line-indent="true"><strong>Gold</strong> and <span style="color: #e4c57d">starlight</span>.</p>',
           createdAt: 10,
           updatedAt: 20,
         },
       ],
       notes: [{ id: 'note-one', text: 'Remember the tide.', createdAt: 11, updatedAt: 21 }],
+      publication: {
+        id: '123e4567-e89b-42d3-a456-426614174000',
+        publishedAt: 30,
+        updatedAt: 40,
+        chapterIds: ['chapter-one'],
+      },
     },
   ],
 }

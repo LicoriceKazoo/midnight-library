@@ -7,8 +7,10 @@ import { CompactAudioPlayer, type PlayerDisplayState } from './CompactAudioPlaye
 import { Icon } from './Icon'
 import { QuickNotesDrawer } from './QuickNotesDrawer'
 import { PwaStatus } from './PwaStatus'
+import { PublicStoryReader } from './PublicStoryReader'
 import { chapterToHtml, countWords, currentSchemaVersion, migrateState, normalizePreferences, preferenceLimits, readingThemes } from './model'
 import { defaultPreferences, sampleStories } from './sampleData'
+import { ShareStoryDialog } from './ShareStoryDialog'
 import { loadState, saveState } from './storage'
 import type { AppState, Chapter, Note, ReadingPreferences, SaveStatus, Story, View } from './types'
 import './App.css'
@@ -20,10 +22,11 @@ const RichTextEditor = lazy(() =>
 type DialogState =
   | { type: 'create-story' }
   | { type: 'edit-story'; storyId: string; initialTitle: string; initialDescription: string }
-  | { type: 'delete-story'; storyId: string; title: string }
+  | { type: 'delete-story'; storyId: string; title: string; published?: boolean }
   | { type: 'create-chapter'; storyId: string }
   | { type: 'rename-chapter'; storyId: string; chapterId: string; initialValue: string }
   | { type: 'delete-chapter'; storyId: string; chapterId: string; title: string }
+  | { type: 'share-story'; storyId: string }
   | null
 
 type HistoryOverlay = 'drawer' | 'notes' | 'dialog' | 'backup' | 'player'
@@ -404,6 +407,9 @@ function AppContent() {
         ...story,
         updatedAt: now,
         chapters: story.chapters.filter((chapter) => chapter.id !== dialog.chapterId),
+        publication: story.publication
+          ? { ...story.publication, chapterIds: story.publication.chapterIds.filter((id) => id !== dialog.chapterId) }
+          : undefined,
       }))
       if (view.name === 'reader' && view.chapterId === dialog.chapterId) {
         navigate({ name: 'story', storyId: dialog.storyId })
@@ -442,9 +448,10 @@ function AppContent() {
           stories={stories}
           onCreate={() => openDialog({ type: 'create-story' })}
           onDelete={(story) =>
-            openDialog({ type: 'delete-story', storyId: story.id, title: story.title })
+            openDialog({ type: 'delete-story', storyId: story.id, title: story.title, published: Boolean(story.publication) })
           }
           onOpen={(storyId) => navigate({ name: 'story', storyId })}
+          onShare={(story) => openDialog({ type: 'share-story', storyId: story.id })}
           onEdit={(story) =>
             openDialog({
               type: 'edit-story', storyId: story.id, initialTitle: story.title,
@@ -475,6 +482,7 @@ function AppContent() {
               type: 'rename-chapter', storyId: activeStory.id, chapterId: chapter.id, initialValue: chapter.title,
             })
           }
+          onShare={() => openDialog({ type: 'share-story', storyId: activeStory.id })}
         />
       )}
 
@@ -506,7 +514,15 @@ function AppContent() {
         state={{ schemaVersion: currentSchemaVersion, stories, preferences }}
       />
 
-      {dialog && (
+      {dialog?.type === 'share-story' && stories.find((story) => story.id === dialog.storyId) && (
+        <ShareStoryDialog
+          story={stories.find((story) => story.id === dialog.storyId)!}
+          onClose={() => closeOverlay('dialog')}
+          onPublication={(publication) => updateStory(dialog.storyId, (story) => ({ ...story, publication }))}
+        />
+      )}
+
+      {dialog && dialog.type !== 'share-story' && (
         <ActionDialog dialog={dialog} onCancel={() => closeOverlay('dialog')} onSubmit={handleDialogSubmit} />
       )}
 
@@ -584,13 +600,14 @@ function AppHeader({
 }
 
 function LibraryScreen({
-  stories, onCreate, onDelete, onEdit, onOpen,
+  stories, onCreate, onDelete, onEdit, onOpen, onShare,
 }: {
   stories: Story[]
   onCreate: () => void
   onDelete: (story: Story) => void
   onEdit: (story: Story) => void
   onOpen: (storyId: string) => void
+  onShare: (story: Story) => void
 }) {
   return (
     <main className="screen library-screen">
@@ -625,6 +642,7 @@ function LibraryScreen({
                 <span className="story-card-content">
                   <span className="story-card-labels">
                     {story.isSample && <span className="sample-badge">Sample</span>}
+                    {story.publication && <span className="published-badge">Published</span>}
                     <span>{story.chapters.length} {story.chapters.length === 1 ? 'chapter' : 'chapters'}</span>
                   </span>
                   <strong>{story.title}</strong>
@@ -633,6 +651,7 @@ function LibraryScreen({
                 </span>
               </button>
               <div className="card-actions" aria-label={`Actions for ${story.title}`}>
+                <button onClick={() => onShare(story)} type="button"><Icon name="share" size={16} /> Share</button>
                 <button onClick={() => onEdit(story)} type="button"><Icon name="edit" size={16} /> Details</button>
                 <button className="danger-action" onClick={() => onDelete(story)} type="button"><Icon name="trash" size={16} /> Delete</button>
               </div>
@@ -645,7 +664,7 @@ function LibraryScreen({
 }
 
 function StoryScreen({
-  story, onCreate, onDelete, onEditDetails, onOpen, onRename,
+  story, onCreate, onDelete, onEditDetails, onOpen, onRename, onShare,
 }: {
   story: Story
   onCreate: () => void
@@ -653,13 +672,14 @@ function StoryScreen({
   onEditDetails: () => void
   onOpen: (chapterId: string) => void
   onRename: (chapter: Chapter) => void
+  onShare: () => void
 }) {
   return (
     <main className="screen story-screen">
       <section className="story-hero">
         <div className="story-hero-actions">
-          {story.isSample && <span className="sample-badge">Sample story</span>}
-          <button onClick={onEditDetails} type="button"><Icon name="edit" size={15} /> Edit details</button>
+          <div>{story.isSample && <span className="sample-badge">Sample story</span>}{story.publication && <span className="published-badge">Published</span>}</div>
+          <div><button onClick={onShare} type="button"><Icon name="share" size={15} /> Share</button><button onClick={onEditDetails} type="button"><Icon name="edit" size={15} /> Edit details</button></div>
         </div>
         <p className="eyebrow">Story</p>
         <h1>{story.title}</h1>
@@ -877,13 +897,14 @@ function NavigationDrawer({
 function ActionDialog({
   dialog, onCancel, onSubmit,
 }: {
-  dialog: Exclude<DialogState, null>
+  dialog: Exclude<DialogState, null | { type: 'share-story'; storyId: string }>
   onCancel: () => void
   onSubmit: (value?: string, description?: string) => void
 }) {
   const isDelete = dialog.type.startsWith('delete')
   const isEditStory = dialog.type === 'edit-story'
   const isStory = dialog.type.endsWith('story')
+  const publishedStoryDeletion = dialog.type === 'delete-story' && dialog.published
   const initialValue = 'initialValue' in dialog
     ? dialog.initialValue
     : isEditStory ? dialog.initialTitle : ''
@@ -898,7 +919,9 @@ function ActionDialog({
         <span className={`dialog-icon ${isDelete ? 'delete' : ''}`}><Icon name={isDelete ? 'trash' : isStory ? 'book' : 'edit'} /></span>
         <h2 id="action-dialog-title">{heading}</h2>
         {isDelete ? (
-          <p>“{'title' in dialog ? dialog.title : ''}” will be permanently removed from this device.</p>
+          publishedStoryDeletion
+            ? <p>This story still has a public snapshot. Close this dialog and unpublish it from <strong>Share</strong> before deleting the local copy.</p>
+            : <p>“{'title' in dialog ? dialog.title : ''}” will be permanently removed from this device.</p>
         ) : (
           <div className="dialog-fields">
             <label>{isStory ? 'Story' : 'Chapter'} title<input autoFocus maxLength={80} onChange={(event) => setValue(event.target.value)} placeholder={isStory ? 'The name of your story' : 'Chapter title'} required value={value} /></label>
@@ -909,7 +932,7 @@ function ActionDialog({
         )}
         <div className="dialog-actions">
           <button className="secondary-button" onClick={onCancel} type="button">Cancel</button>
-          <button className={isDelete ? 'delete-button' : 'gold-button'} disabled={!isDelete && !value.trim()} type={isDelete ? 'button' : 'submit'} onClick={isDelete ? () => onSubmit() : undefined}>{action}</button>
+          <button className={isDelete ? 'delete-button' : 'gold-button'} disabled={publishedStoryDeletion || (!isDelete && !value.trim())} type={isDelete ? 'button' : 'submit'} onClick={isDelete ? () => onSubmit() : undefined}>{action}</button>
         </div>
       </form>
     </div>
@@ -928,6 +951,8 @@ function EmptyState({ title, text, onCreate }: { title: string; text: string; on
 }
 
 function App() {
+  const sharedStoryMatch = window.location.pathname.match(/^\/share\/([0-9a-f-]+)\/?$/iu)
+  if (sharedStoryMatch) return <PublicStoryReader publicationId={sharedStoryMatch[1]} />
   return <AudioProvider><AppContent /></AudioProvider>
 }
 

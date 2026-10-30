@@ -23,6 +23,14 @@ export type Story = {
   updatedAt: number
   chapters: Chapter[]
   notes?: Note[]
+  publication?: StoryPublication
+}
+
+export type StoryPublication = {
+  id: string
+  publishedAt: number
+  updatedAt: number
+  chapterIds: string[]
 }
 
 export type ReadingPreferences = {
