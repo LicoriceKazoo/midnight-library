@@ -33,6 +33,14 @@ function json(statusCode: number, body: unknown, extraHeaders: Record<string, st
   }
 }
 
+export function publishingServiceUnavailableResponse() {
+  return json(500, { error: 'The publishing service is temporarily unavailable.' })
+}
+
+function errorName(error: unknown) {
+  return error instanceof Error && error.name ? error.name : 'UnknownError'
+}
+
 function publicStory(record: StoredStory): PublishedStory {
   const { ownerId: _ownerId, ...story } = record
   return story
@@ -190,8 +198,8 @@ export function createPublishedStoryHandler({
     if (!await store.update(id, record, existing.etag)) return json(409, { error: 'The published story changed. Please try again.' })
       return json(200, publicStory(record))
     } catch (error) {
-      console.error('Published story request failed.', error)
-      return json(500, { error: 'The publishing service is temporarily unavailable.' })
+      console.error('Published story request failed.', { errorName: errorName(error) })
+      return publishingServiceUnavailableResponse()
     }
   }
 }

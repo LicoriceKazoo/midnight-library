@@ -9,6 +9,7 @@ This milestone keeps local writing private while adding optional, owner-initiate
 - The browser sends only the selected story title, description, and selected chapter IDs, titles, and rich-text HTML.
 - A Netlify Function validates the owner's verified Identity token and exact configured user ID before every create, update, or delete.
 - Sanitized snapshots are stored in the site-wide `midnight-library-published-stories` Netlify Blobs store with strong consistency. Site-wide storage survives deploy replacement and branch changes.
+- The Function uses Netlify's Lambda compatibility API so it can retain the verified Netlify Identity user in `clientContext.user`. At the start of every request it passes Netlify's opaque, request-provided Blob context to `connectLambda(event)`, then opens the store. It does not use a personal access token or client-supplied identity data.
 - Readers request one unpredictable UUID at `/share/<publication-id>`. There is no public listing endpoint.
 - Public reads require no account. Mutation requests require a bearer token from Netlify Identity.
 
@@ -58,6 +59,7 @@ Invitation and password-recovery email links land on the application with a shor
 ## Security and privacy behavior
 
 - Server-side authorization uses Netlify's verified Function `clientContext.user.sub` value.
+- Blob credentials come only from Netlify's per-request Function context. Blob initialization failures are reported with an error type and a generic client response; credentials, tokens, and internal error messages are not logged.
 - Administrative Netlify tokens are not required and are never sent to the browser.
 - HTML is allowlist-sanitized on the server and sanitized again before browser rendering.
 - Story and chapter lengths, chapter count, total rich-text size, and request body size are bounded.
