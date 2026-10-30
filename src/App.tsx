@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { AudioLibraryScreen } from './AudioLibraryScreen'
+import { useAudio } from './AudioContext'
 import { AudioProvider } from './AudioProvider'
 import { BackupControls, RestoreBackupDialog } from './BackupControls'
-import { CompactAudioPlayer } from './CompactAudioPlayer'
+import { CompactAudioPlayer, type PlayerDisplayState } from './CompactAudioPlayer'
 import { Icon } from './Icon'
 import { QuickNotesDrawer } from './QuickNotesDrawer'
 import { PwaStatus } from './PwaStatus'
-import { chapterToHtml, countWords, currentSchemaVersion, migrateState, normalizePreferences, preferenceLimits } from './model'
+import { chapterToHtml, countWords, currentSchemaVersion, migrateState, normalizePreferences, preferenceLimits, readingThemes } from './model'
 import { defaultPreferences, sampleStories } from './sampleData'
 import { loadState, saveState } from './storage'
 import type { AppState, Chapter, Note, ReadingPreferences, SaveStatus, Story, View } from './types'
@@ -82,6 +83,7 @@ function formatDate(timestamp: number) {
 }
 
 function AppContent() {
+  const audio = useAudio()
   const [stories, setStories] = useState<Story[]>([])
   const [preferences, setPreferences] = useState<ReadingPreferences>(defaultPreferences)
   const [view, setView] = useState<View>(initialView)
@@ -89,12 +91,13 @@ function AppContent() {
   const [notesOpen, setNotesOpen] = useState(false)
   const [dialog, setDialog] = useState<DialogState>(null)
   const [pendingBackup, setPendingBackup] = useState<{ state: AppState; exportedAt: string } | null>(null)
-  const [playerExpanded, setPlayerExpanded] = useState(false)
+  const [playerState, setPlayerState] = useState<PlayerDisplayState>('minimized')
   const [backupNotice, setBackupNotice] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [storageError, setStorageError] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const saveSequence = useRef(0)
+  const pendingPlayerState = useRef<PlayerDisplayState | null>(null)
 
   useEffect(() => {
     loadState()
@@ -135,13 +138,21 @@ function AppContent() {
   }, [hydrated, preferences, stories])
 
   useEffect(() => {
+    document.documentElement.dataset.theme = preferences.theme
+    const themeColor = readingThemes.find((theme) => theme.id === preferences.theme)?.colors[0] ?? '#080d19'
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', themeColor)
+  }, [preferences.theme])
+
+  useEffect(() => {
     window.history.scrollRestoration = 'manual'
     const restoreHistory = (event: PopStateEvent) => {
       if (!isMidnightHistoryState(event.state)) return
       setView(event.state.view)
       setDrawerOpen(event.state.overlay === 'drawer')
       setNotesOpen(event.state.overlay === 'notes')
-      setPlayerExpanded(event.state.overlay === 'player')
+      const requestedPlayerState = pendingPlayerState.current
+      pendingPlayerState.current = null
+      setPlayerState((current) => requestedPlayerState ?? (event.state.overlay === 'player' ? 'expanded' : current === 'hidden' ? 'hidden' : 'minimized'))
       setDialog(null)
       setPendingBackup(null)
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -160,7 +171,7 @@ function AppContent() {
         ? 'dialog'
         : pendingBackup
           ? 'backup'
-          : playerExpanded
+          : playerState === 'expanded'
             ? 'player'
             : undefined
 
@@ -176,7 +187,7 @@ function AppContent() {
     else window.history.pushState(nextState, '')
     setDrawerOpen(overlay === 'drawer')
     setNotesOpen(overlay === 'notes')
-    setPlayerExpanded(overlay === 'player')
+    setPlayerState((current) => overlay === 'player' ? 'expanded' : current === 'hidden' ? 'hidden' : 'minimized')
     if (overlay !== 'dialog') setDialog(null)
     if (overlay !== 'backup') setPendingBackup(null)
   }
@@ -190,7 +201,7 @@ function AppContent() {
     if (overlay === 'notes') setNotesOpen(false)
     if (overlay === 'dialog') setDialog(null)
     if (overlay === 'backup') setPendingBackup(null)
-    if (overlay === 'player') setPlayerExpanded(false)
+    if (overlay === 'player') setPlayerState('minimized')
   }
 
   const openDialog = (nextDialog: Exclude<DialogState, null>) => {
@@ -210,11 +221,11 @@ function AppContent() {
       else if (dialog) closeOverlay('dialog')
       else if (notesOpen) closeNotes()
       else if (drawerOpen) closeOverlay('drawer')
-      else if (playerExpanded) closeOverlay('player')
+      else if (playerState === 'expanded') closeOverlay('player')
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [dialog, drawerOpen, notesOpen, pendingBackup, playerExpanded])
+  }, [dialog, drawerOpen, notesOpen, pendingBackup, playerState])
 
   useEffect(() => {
     document.body.style.overflow = drawerOpen || dialog || notesOpen || pendingBackup ? 'hidden' : ''
@@ -237,6 +248,7 @@ function AppContent() {
 
   const navigate = (nextView: View) => {
     if (sameView(view, nextView)) {
+      if (nextView.name === 'audio') setPlayerState('minimized')
       if (activeOverlay) closeOverlay(activeOverlay)
       return
     }
@@ -249,7 +261,7 @@ function AppContent() {
     setNotesOpen(false)
     setDialog(null)
     setPendingBackup(null)
-    setPlayerExpanded(false)
+    setPlayerState((current) => nextView.name === 'audio' ? 'minimized' : current === 'hidden' ? 'hidden' : 'minimized')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -318,7 +330,7 @@ function AppContent() {
     setDrawerOpen(false)
     setNotesOpen(false)
     setDialog(null)
-    setPlayerExpanded(false)
+    setPlayerState((current) => current === 'hidden' ? 'hidden' : 'minimized')
     setView(libraryView)
     setBackupNotice('Backup restored. Your complete library is saved locally.')
     window.setTimeout(() => setBackupNotice(null), 5000)
@@ -466,7 +478,7 @@ function AppContent() {
         />
       )}
 
-      {view.name === 'audio' && <AudioLibraryScreen />}
+      {view.name === 'audio' && <AudioLibraryScreen onPlayerRestore={() => setPlayerState((current) => current === 'hidden' ? 'minimized' : current)} />}
 
       {view.name === 'reader' && activeStory && activeChapter && (
         <ReaderScreen
@@ -523,8 +535,20 @@ function AppContent() {
       {backupNotice && <div className="success-toast" role="status">{backupNotice}</div>}
       <PwaStatus beforeUpdate={() => saveState({ schemaVersion: currentSchemaVersion, stories, preferences })} />
       <CompactAudioPlayer
-        expanded={playerExpanded}
-        onExpandedChange={(nextExpanded) => nextExpanded ? openOverlay('player') : closeOverlay('player')}
+        state={playerState}
+        onStateChange={(nextState) => {
+          if (nextState === 'expanded') {
+            openOverlay('player')
+            return
+          }
+          if (playerState === 'expanded' && isMidnightHistoryState(window.history.state) && window.history.state.overlay === 'player') {
+            pendingPlayerState.current = nextState
+            window.history.back()
+            return
+          }
+          if (nextState === 'hidden') audio.pause()
+          setPlayerState(nextState)
+        }}
       />
     </div>
   )
@@ -821,6 +845,26 @@ function NavigationDrawer({
               <button aria-label="Increase line spacing" disabled={preferences.lineHeight >= preferenceLimits.lineHeight.max} onClick={() => setLineHeight(preferences.lineHeight + preferenceLimits.lineHeight.step)} type="button"><Icon name="plus" size={18} /></button>
             </div>
           </div>
+          <fieldset className="theme-control">
+            <legend>Color theme</legend>
+            <div>
+              {readingThemes.map((theme) => (
+                <button
+                  aria-label={`Use ${theme.name} theme`}
+                  aria-pressed={preferences.theme === theme.id}
+                  className={preferences.theme === theme.id ? 'active' : ''}
+                  key={theme.id}
+                  onClick={() => onPreferences(normalizePreferences({ ...preferences, theme: theme.id }))}
+                  type="button"
+                >
+                  <span className="theme-swatches" aria-hidden="true">
+                    {theme.colors.map((color) => <i key={color} style={{ background: color }} />)}
+                  </span>
+                  <span>{theme.name}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
           <p className="control-preview" style={{ fontSize: `${Math.min(preferences.fontSize, 20)}px`, lineHeight: preferences.lineHeight }}>The night was quiet, and every page felt like a small illuminated window.</p>
         </section>
         <BackupControls onImportReady={onImportReady} state={state} />

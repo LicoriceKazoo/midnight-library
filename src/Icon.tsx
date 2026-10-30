@@ -10,10 +10,14 @@ type IconName =
   | 'download'
   | 'edit'
   | 'home'
+  | 'indent'
+  | 'outdent'
+  | 'first-line-indent'
   | 'menu'
   | 'minus'
   | 'music'
   | 'notebook'
+  | 'palette'
   | 'pause'
   | 'play'
   | 'playlist'
@@ -42,10 +46,14 @@ const paths: Record<IconName, ReactNode> = {
   download: <><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" /></>,
   edit: <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
   home: <><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10M9 20v-6h6v6" /></>,
+  indent: <><path d="M9 6h11M9 10h11M9 14h11M9 18h11" /><path d="m3 9 3 3-3 3" /></>,
+  outdent: <><path d="M9 6h11M9 10h11M9 14h11M9 18h11" /><path d="m6 9-3 3 3 3" /></>,
+  'first-line-indent': <><path d="M4 6h16M8 11h12M8 16h12" /><path d="m3 9 3 3-3 3" /></>,
   menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
   minus: <path d="M5 12h14" />,
   music: <><path d="M9 18V5l11-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" /></>,
   notebook: <><path d="M6 3h14v18H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M8 3v18M11 8h6M11 12h6" /></>,
+  palette: <><path d="M12 3a9 9 0 0 0 0 18h1.5a1.8 1.8 0 0 0 0-3.6H12a1.4 1.4 0 0 1 0-2.8h2.4A6.6 6.6 0 0 0 21 8c0-3.2-4-5-9-5Z" /><circle cx="7.5" cy="9" r=".8" /><circle cx="10.5" cy="6.5" r=".8" /><circle cx="15" cy="7" r=".8" /></>,
   pause: <><path d="M8 5v14M16 5v14" /></>,
   play: <path d="m8 5 11 7-11 7Z" />,
   playlist: <><path d="M4 6h10M4 11h10M4 16h7" /><path d="M18 11v8M15 14h6" /></>,

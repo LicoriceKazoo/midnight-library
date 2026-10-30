@@ -16,8 +16,8 @@ describe('IndexedDB storage', () => {
 
   it('round-trips formatted chapters, story notes, and preferences', async () => {
     const state: AppState = {
-      schemaVersion: 2,
-      preferences: { fontSize: 30, lineHeight: 3 },
+      schemaVersion: 3,
+      preferences: { fontSize: 30, lineHeight: 3, theme: 'charcoal' },
       stories: [
         {
           id: 'story',

@@ -21,6 +21,7 @@ export type AudioContextValue = {
   playTrack: (trackId: string, playlistId?: string) => void
   playPlaylist: (playlistId: string) => void
   togglePlay: () => void
+  pause: () => void
   previous: () => void
   next: () => void
   seek: (position: number) => void

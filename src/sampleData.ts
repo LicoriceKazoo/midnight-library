@@ -5,6 +5,7 @@ const createdAt = Date.now()
 export const defaultPreferences: ReadingPreferences = {
   fontSize: 18,
   lineHeight: 1.75,
+  theme: 'midnight',
 }
 
 export const sampleStories: Story[] = [

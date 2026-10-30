@@ -2,16 +2,19 @@ import { useRef } from 'react'
 import { useAudio } from './AudioContext'
 import { Icon } from './Icon'
 
+export type PlayerDisplayState = 'expanded' | 'minimized' | 'hidden'
+
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
   return `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
 }
 
-export function CompactAudioPlayer({ expanded, onExpandedChange }: { expanded: boolean; onExpandedChange: (expanded: boolean) => void }) {
+export function CompactAudioPlayer({ state, onStateChange }: { state: PlayerDisplayState; onStateChange: (state: PlayerDisplayState) => void }) {
   const audio = useAudio()
   const gestureStart = useRef<number | null>(null)
   const suppressTap = useRef(false)
-  if (!audio.tracks.length) return null
+  if (!audio.tracks.length || state === 'hidden') return null
+  const expanded = state === 'expanded'
 
   const startGesture = (event: React.PointerEvent<HTMLButtonElement>) => {
     gestureStart.current = event.clientY
@@ -23,10 +26,14 @@ export function CompactAudioPlayer({ expanded, onExpandedChange }: { expanded: b
     if (gestureStart.current !== null) {
       const distance = event.clientY - gestureStart.current
       if (distance < -36) {
-        onExpandedChange(true)
+        onStateChange('expanded')
         suppressTap.current = true
       } else if (distance > 36) {
-        onExpandedChange(false)
+        if (expanded) onStateChange('minimized')
+        else {
+          audio.pause()
+          onStateChange('hidden')
+        }
         suppressTap.current = true
       }
     }
@@ -41,7 +48,7 @@ export function CompactAudioPlayer({ expanded, onExpandedChange }: { expanded: b
       suppressTap.current = false
       return
     }
-    onExpandedChange(!expanded)
+    onStateChange(expanded ? 'minimized' : 'expanded')
   }
 
   return (
@@ -85,7 +92,8 @@ export function CompactAudioPlayer({ expanded, onExpandedChange }: { expanded: b
           <strong>{audio.currentTrack?.title || audio.currentTrack?.fileName || 'Choose a track'}</strong>
         </div>
         <div className="compact-time">{formatTime(audio.progress)}</div>
-        <button aria-expanded={expanded} aria-label={expanded ? 'Collapse audio player' : 'Expand audio player'} className="player-expand-button" onClick={() => onExpandedChange(!expanded)} type="button"><Icon name={expanded ? 'chevron-down' : 'chevron-up'} /></button>
+        <button aria-label="Hide audio player" className="player-dismiss-button" onClick={() => { audio.pause(); onStateChange('hidden') }} type="button"><Icon name="x" size={18} /></button>
+        <button aria-expanded={expanded} aria-label={expanded ? 'Collapse audio player' : 'Expand audio player'} className="player-expand-button" onClick={() => onStateChange(expanded ? 'minimized' : 'expanded')} type="button"><Icon name={expanded ? 'chevron-down' : 'chevron-up'} /></button>
       </div>
     </section>
   )

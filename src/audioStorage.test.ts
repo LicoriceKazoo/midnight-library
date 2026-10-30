@@ -46,7 +46,7 @@ describe('local audio storage', () => {
     await saveAudioState(audioState)
     await expect(loadAudioState()).resolves.toEqual(audioState)
 
-    const storyState: AppState = { schemaVersion: 2, stories: [], preferences: { fontSize: 18, lineHeight: 1.75 } }
+    const storyState: AppState = { schemaVersion: 3, stories: [], preferences: { fontSize: 18, lineHeight: 1.75, theme: 'midnight' } }
     const backup = serializeBackup(storyState)
     expect(backup).not.toContain(track.fileName)
     expect(backup).not.toContain('audio-track')

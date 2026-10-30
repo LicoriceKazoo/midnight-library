@@ -307,6 +307,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       else if (audio?.src && audio.readyState >= 1) void attemptPlay()
       else autoplayRequested.current = true
     },
+    pause: () => audioRef.current?.pause(),
     previous: () => {
       const audio = audioRef.current
       if (audio && audio.currentTime > 3) {

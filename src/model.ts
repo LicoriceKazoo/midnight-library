@@ -1,6 +1,11 @@
-import type { AppState, Chapter, ReadingPreferences, Story } from './types'
+import type { AppState, Chapter, ReadingPreferences, ReadingTheme, Story } from './types'
 
-export const currentSchemaVersion = 2
+export const currentSchemaVersion = 3
+export const readingThemes: { id: ReadingTheme; name: string; colors: [string, string, string] }[] = [
+  { id: 'midnight', name: 'Midnight Navy', colors: ['#080d19', '#111928', '#e4c57d'] },
+  { id: 'amethyst', name: 'Amethyst Dusk', colors: ['#120d1a', '#21162d', '#c9a9df'] },
+  { id: 'charcoal', name: 'Charcoal Hearth', colors: ['#151515', '#282522', '#d8bd8f'] },
+]
 export const preferenceLimits = {
   fontSize: { min: 11, max: 30 },
   lineHeight: { min: 1.2, max: 5, step: 0.5 },
@@ -12,6 +17,9 @@ const clamp = (value: number, min: number, max: number) =>
 export function normalizePreferences(
   preferences?: Partial<ReadingPreferences>,
 ): ReadingPreferences {
+  const theme = readingThemes.some((item) => item.id === preferences?.theme)
+    ? preferences?.theme as ReadingTheme
+    : 'midnight'
   return {
     fontSize: clamp(
       Number(preferences?.fontSize) || 18,
@@ -25,6 +33,7 @@ export function normalizePreferences(
         preferenceLimits.lineHeight.max,
       ).toFixed(2),
     ),
+    theme,
   }
 }
 

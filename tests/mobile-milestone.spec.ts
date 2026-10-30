@@ -52,7 +52,11 @@ test('persists reading preferences, formatted editing, and quick notes on mobile
   await page.getByRole('button', { name: /Edit chapter/ }).click()
   const editor = page.locator('.chapter-editor-content')
   await expect(editor).toBeVisible()
+  const paletteButton = page.getByRole('button', { name: 'Text colors' })
   const colorButton = page.getByRole('button', { name: 'Set text color #e4c57d' })
+  await expect(paletteButton).toHaveAttribute('aria-expanded', 'false')
+  await expect(colorButton).toBeHidden()
+  await paletteButton.click()
   await expect(colorButton).toBeVisible()
   expect(await colorButton.evaluate((element) => ({
     touchWidth: element.getBoundingClientRect().width,

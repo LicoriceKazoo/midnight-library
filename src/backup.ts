@@ -1,4 +1,4 @@
-import { currentSchemaVersion, migrateState, preferenceLimits } from './model'
+import { currentSchemaVersion, migrateState, preferenceLimits, readingThemes } from './model'
 import type { AppState, Chapter, Note, ReadingPreferences, Story } from './types'
 
 export const backupFormat = 'midnight-library-backup'
@@ -54,6 +54,9 @@ function validateRichText(html: string, label: string) {
     if (tag === 'span' && !token.startsWith('</')) {
       const safeSpan = /^<span(?: style="color:\s*(?:#[0-9a-f]{3,8}|rgba?\([0-9,.\s%]+\));?")?>$/iu
       if (!safeSpan.test(token)) throw new Error(`${label} contains an unsupported text style.`)
+    } else if (tag === 'p' && !token.startsWith('</')) {
+      const safeParagraph = /^<p(?: data-indent="[1-4]")?(?: data-first-line-indent="true")?>$/iu
+      if (!safeParagraph.test(token)) throw new Error(`${label} contains an unsupported paragraph style.`)
     } else if (!new RegExp(`^<\\/?${tag}\\s*\\/?>$`, 'iu').test(token)) {
       throw new Error(`${label} contains unsupported attributes.`)
     }
@@ -107,7 +110,14 @@ function validatePreferences(value: unknown): ReadingPreferences {
     typeof lineHeight !== 'number' || !Number.isFinite(lineHeight) ||
     lineHeight < preferenceLimits.lineHeight.min || lineHeight > preferenceLimits.lineHeight.max
   ) throw new Error('The backup contains invalid line spacing.')
-  return { fontSize, lineHeight }
+  const theme = value.theme === undefined ? 'midnight' : value.theme
+  const matchedTheme = typeof theme === 'string'
+    ? readingThemes.find((item) => item.id === theme)
+    : undefined
+  if (!matchedTheme) {
+    throw new Error('The backup contains an invalid color theme.')
+  }
+  return { fontSize, lineHeight, theme: matchedTheme.id }
 }
 
 function validateStories(value: unknown): Story[] {

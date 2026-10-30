@@ -5,8 +5,8 @@ import { loadState, saveState } from './storage'
 import type { AppState } from './types'
 
 const state: AppState = {
-  schemaVersion: 2,
-  preferences: { fontSize: 22, lineHeight: 4.85 },
+  schemaVersion: 3,
+  preferences: { fontSize: 22, lineHeight: 4.85, theme: 'amethyst' },
   stories: [
     {
       id: 'story-one',
@@ -18,7 +18,7 @@ const state: AppState = {
         {
           id: 'chapter-one',
           title: 'Blue Lanterns',
-          contentHtml: '<h2>Nightfall</h2><p><strong>Gold</strong> and <span style="color: #e4c57d">starlight</span>.</p>',
+          contentHtml: '<h2>Nightfall</h2><p data-indent="2" data-first-line-indent="true"><strong>Gold</strong> and <span style="color: #e4c57d">starlight</span>.</p>',
           createdAt: 10,
           updatedAt: 20,
         },
@@ -64,6 +64,14 @@ describe('backup export and restore', () => {
     const parsed = parseBackup(JSON.stringify(document))
     expect(parsed.ok).toBe(true)
     if (parsed.ok) expect(parsed.state.stories[0].description).toBe('')
+  })
+
+  it('migrates backups created before theme preferences', () => {
+    const document = createBackup(state) as unknown as { data: { preferences: Record<string, unknown> } }
+    delete document.data.preferences.theme
+    const parsed = parseBackup(JSON.stringify(document))
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) expect(parsed.state.preferences.theme).toBe('midnight')
   })
 
   it('rejects duplicate IDs and unsafe rich text before restore', () => {

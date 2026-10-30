@@ -28,7 +28,10 @@ export type Story = {
 export type ReadingPreferences = {
   fontSize: number
   lineHeight: number
+  theme: ReadingTheme
 }
+
+export type ReadingTheme = 'midnight' | 'amethyst' | 'charcoal'
 
 export type AppState = {
   schemaVersion: number

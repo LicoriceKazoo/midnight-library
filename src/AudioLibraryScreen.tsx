@@ -23,7 +23,7 @@ function formatDuration(seconds?: number) {
   return `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
 }
 
-export function AudioLibraryScreen() {
+export function AudioLibraryScreen({ onPlayerRestore }: { onPlayerRestore: () => void }) {
   const audio = useAudio()
   const fileInput = useRef<HTMLInputElement>(null)
   const [dialog, setDialog] = useState<AudioDialog>(null)
@@ -82,7 +82,11 @@ export function AudioLibraryScreen() {
           <div className="audio-track-list">
             {audio.tracks.map((track, index) => (
               <article className={`audio-track-card ${audio.currentTrack?.id === track.id ? 'current' : ''}`} key={track.id}>
-                <button aria-label={`${audio.currentTrack?.id === track.id && audio.playing ? 'Pause' : 'Play'} ${track.title || track.fileName}`} className="track-play-button" onClick={() => audio.currentTrack?.id === track.id && audio.playing ? audio.togglePlay() : audio.playTrack(track.id)} type="button">
+                <button aria-label={`${audio.currentTrack?.id === track.id && audio.playing ? 'Pause' : 'Play'} ${track.title || track.fileName}`} className="track-play-button" onClick={() => {
+                  onPlayerRestore()
+                  if (audio.currentTrack?.id === track.id && audio.playing) audio.togglePlay()
+                  else audio.playTrack(track.id)
+                }} type="button">
                   {audio.currentTrack?.id === track.id && audio.playing ? <Icon name="pause" /> : <Icon name="play" />}
                 </button>
                 <div className="track-copy">
@@ -113,7 +117,7 @@ export function AudioLibraryScreen() {
               <article className="playlist-card" key={playlist.id}>
                 <div className="playlist-symbol"><Icon name="playlist" size={23} /></div>
                 <div className="playlist-copy"><strong>{playlist.name}</strong><span>{playlist.trackIds.length} {playlist.trackIds.length === 1 ? 'track' : 'tracks'}</span></div>
-                <button aria-label={`Play ${playlist.name}`} className="playlist-play" disabled={!playlist.trackIds.length} onClick={() => audio.playPlaylist(playlist.id)} title={playlist.trackIds.length ? `Play ${playlist.name}` : 'Add tracks before playing'} type="button"><Icon name="play" size={17} /></button>
+                <button aria-label={`Play ${playlist.name}`} className="playlist-play" disabled={!playlist.trackIds.length} onClick={() => { onPlayerRestore(); audio.playPlaylist(playlist.id) }} title={playlist.trackIds.length ? `Play ${playlist.name}` : 'Add tracks before playing'} type="button"><Icon name="play" size={17} /></button>
                 <div className="playlist-actions">
                   <button onClick={() => setDialog({ type: 'manage-playlist', playlist })} type="button">Tracks</button>
                   <button onClick={() => setDialog({ type: 'rename-playlist', playlist })} type="button">Rename</button>
