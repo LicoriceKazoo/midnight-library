@@ -12,9 +12,15 @@ npm run dev -- --host 0.0.0.0
 
 Vite serves the app on port 5173.
 
+The first application milestone includes a responsive story library, story and
+chapter management, a continuous reading view, persisted reading preferences,
+and local IndexedDB storage. The included stories are labeled sample content and
+can be safely renamed or deleted.
+
 ```sh
 npm run build  # Type-check and build for production
 npm run lint   # Run Oxlint
+npm run typecheck  # Run TypeScript checks without emitting files
 npm run preview -- --host 0.0.0.0  # Preview the production build
 ```
 
