@@ -16,9 +16,10 @@ type BlobsStore = {
   setJSON: (key: string, data: unknown, options: { onlyIfNew: true } | { onlyIfMatch: string }) => Promise<{ modified: boolean }>
 }
 type BlobsLambdaEvent = Parameters<typeof connectLambda>[0]
+type BlobsConnection = { uncachedEdgeURL: string }
 type FunctionDependencies = {
-  connect?: (event: BlobsLambdaEvent) => void
-  openStore?: (options: { name: string; consistency: 'strong' }) => BlobsStore
+  connect?: (event: BlobsLambdaEvent) => BlobsConnection
+  openStore?: (options: { name: string; consistency: 'strong'; uncachedEdgeURL: string }) => BlobsStore
   logError?: (message: string, details: { errorName: string }) => void
   publisherId?: string
 }
@@ -34,6 +35,36 @@ function blobsLambdaEvent(event: HandlerEvent): BlobsLambdaEvent {
     Object.entries(event.headers).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
   )
   return { blobs, headers }
+}
+
+function missingConsistencyEndpointError() {
+  const error = new Error('Netlify did not provide the strong-consistency Blob endpoint for this request.')
+  error.name = 'MissingBlobsConsistencyEndpointError'
+  return error
+}
+
+function uncachedEdgeURL(event: BlobsLambdaEvent) {
+  let data: unknown
+  try {
+    data = JSON.parse(Buffer.from(event.blobs, 'base64').toString('utf8')) as unknown
+  } catch {
+    throw missingConsistencyEndpointError()
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw missingConsistencyEndpointError()
+  const value = (data as Record<string, unknown>).url_uncached
+  if (typeof value !== 'string' || !value) throw missingConsistencyEndpointError()
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') throw missingConsistencyEndpointError()
+  } catch {
+    throw missingConsistencyEndpointError()
+  }
+  return value
+}
+
+export function connectPublishedStoryBlobs(event: BlobsLambdaEvent): BlobsConnection {
+  connectLambda(event)
+  return { uncachedEdgeURL: uncachedEdgeURL(event) }
 }
 
 function publishedStoryStore(blobs: BlobsStore): PublishedStoryStore {
@@ -59,7 +90,7 @@ function errorName(error: unknown) {
 }
 
 export function createPublishedStoryFunction({
-  connect = connectLambda,
+  connect = connectPublishedStoryBlobs,
   openStore = getStore,
   logError = (message, details) => console.error(message, details),
   publisherId,
@@ -69,8 +100,8 @@ export function createPublishedStoryFunction({
   return async (event, context): Promise<HandlerResponse> => {
     let blobs: BlobsStore
     try {
-      connect(blobsLambdaEvent(event))
-      blobs = openStore({ name: storeName, consistency: 'strong' })
+      const connection = connect(blobsLambdaEvent(event))
+      blobs = openStore({ name: storeName, consistency: 'strong', ...connection })
     } catch (error) {
       logError('Published story Blob initialization failed.', { errorName: errorName(error) })
       return publishingServiceUnavailableResponse()
